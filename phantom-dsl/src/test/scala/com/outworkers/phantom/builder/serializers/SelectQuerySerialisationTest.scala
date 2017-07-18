@@ -37,6 +37,25 @@ class SelectQuerySerialisationTest extends QueryBuilderTest {
 
   "The select query builder" - {
 
+    "should serialize groupBy clauses" - {
+
+      "serialize a single column grouping clause" in {
+        val id = gen[UUID]
+
+        val qb = BasicTable.select.where(_.id eqs id).groupBy(_.id2).queryString
+
+        qb shouldEqual s"SELECT * FROM phantom.basicTable WHERE id = ${id.toString} ORDER BY id2 DESC;"
+      }
+
+      "serialize a multiple column grouping clause" in {
+        val id = gen[UUID]
+
+        val qb = BasicTable.select.where(_.id eqs id).orderBy(_.id2.desc, _.id3.asc).queryString
+
+        qb shouldEqual s"SELECT * FROM phantom.basicTable WHERE id = ${id.toString} ORDER BY id2 DESC, id3 ASC;"
+      }
+    }
+
     "should serialize distinct clauses" - {
       "should correctly append a * if there is no column selection provided to a distinct clause" in {
         val id = gen[UUID]

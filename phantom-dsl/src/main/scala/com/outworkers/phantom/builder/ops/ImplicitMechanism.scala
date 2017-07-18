@@ -15,13 +15,13 @@
  */
 package com.outworkers.phantom.builder.ops
 
+import com.outworkers.phantom.CassandraTable
 import com.outworkers.phantom.builder.QueryBuilder
-import com.outworkers.phantom.builder.clauses.{CompareAndSetClause, OrderingColumn, WhereClause}
+import com.outworkers.phantom.builder.clauses.{CompareAndSetClause, GroupingColumn, OrderingColumn, WhereClause}
 import com.outworkers.phantom.builder.primitives.Primitive
 import com.outworkers.phantom.builder.query.sasi.{Mode, SASITextOps}
 import com.outworkers.phantom.column._
-import com.outworkers.phantom.dsl._
-import com.outworkers.phantom.keys.{Indexed, Undroppable}
+import com.outworkers.phantom.keys._
 import shapeless.<:!<
 
 import scala.annotation.implicitNotFound
@@ -143,6 +143,10 @@ private[phantom] trait ImplicitMechanism extends ModifyMechanism {
   implicit def optionalIndexToQueryColumn[T : Primitive](col: AbstractColumn[Option[T]] with Indexed): QueryColumn[T] = new QueryColumn(col.name)
 
   implicit def orderingColumn[RR](col: AbstractColumn[RR] with PrimaryKey): OrderingColumn[RR] = new OrderingColumn[RR](col)
+
+  implicit def groupColumnPrimary[T <: CassandraTable[T, R], R, RR](col: Column[T, R, RR] with PrimaryKey): GroupingColumn[T, R, RR] = new GroupingColumn(col)
+  implicit def groupColumnPartition[T <: CassandraTable[T, R], R, RR](col: Column[T, R, RR] with PartitionKey): GroupingColumn[T, R, RR] = new GroupingColumn(col)
+  implicit def groupColumnClustering[T <: CassandraTable[T, R], R, RR](col: Column[T, R, RR] with ClusteringOrder): GroupingColumn[T, R, RR] = new GroupingColumn(col)
 
   /**
     * Definition used to cast a comparison clause to Map entry lookup based on a secondary index.

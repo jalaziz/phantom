@@ -276,4 +276,29 @@ private[builder] class SelectQueryBuilder {
   def blobAsText(column: String): CQLQuery = {
     CQLQuery(CQLSyntax.Selection.BlobAsText).wrapn(column)
   }
+
+  /**
+    * GroupBy method used in combination with anGroupPart to provide final serialization
+    * of a varargs call. It will take a list of queries in the "colname" format and produce a full clause.
+    *
+    * Example:
+    *
+    * {{{
+    *   val clauses = Seq("name", "id", "datetime")
+    *   val output = orderBy(clauses: _*)
+    *
+    *   output = "GROUP BY (name, id, datetime)"
+    * }}}
+    *
+    * @param clauses A sequence of ordering clauses to include in the query.
+    * @return A final ORDER BY clause, with all the relevant query parts appended.
+    */
+  def groupBy(clauses: Seq[CQLQuery]): CQLQuery = clauses match {
+    case Seq(head) =>
+      CQLQuery(CQLSyntax.Selection.OrderBy).forcePad.append(head.queryString)
+    case _ =>
+      CQLQuery(CQLSyntax.Selection.OrderBy).forcePad.append(clauses.map(_.queryString))
+  }
+
+
 }

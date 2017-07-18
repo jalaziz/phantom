@@ -27,9 +27,12 @@ sealed abstract class CQLQueryPart[Part <: CQLQueryPart[Part]](
 
 sealed class UsingPart(override val queries: Seq[CQLQuery] = Seq.empty) extends CQLQueryPart[UsingPart](queries) {
 
-  override def qb: CQLQuery = queries match {
-    case head :: tail => QueryBuilder.Update.usingPart(queries)
-    case Nil => CQLQuery.empty
+  override def qb: CQLQuery = {
+    if (queries.nonEmpty) {
+      QueryBuilder.Update.usingPart(queries)
+    } else {
+      CQLQuery.empty
+    }
   }
 
   override def instance(l: Seq[CQLQuery]): UsingPart = new UsingPart(l)
@@ -48,7 +51,7 @@ sealed class WherePart(
 }
 
 object WherePart {
-  def empty: WherePart = new WherePart(Nil)
+  def empty: WherePart = new WherePart(Seq.empty)
 }
 
 sealed class LimitedPart(override val queries: Seq[CQLQuery] = Seq.empty) extends CQLQueryPart[LimitedPart](queries) {
@@ -58,7 +61,20 @@ sealed class LimitedPart(override val queries: Seq[CQLQuery] = Seq.empty) extend
 }
 
 object LimitedPart {
-  def empty: LimitedPart = new LimitedPart(Nil)
+  def empty: LimitedPart = new LimitedPart(Seq.empty)
+}
+
+sealed class GroupPart(override val queries: Seq[CQLQuery] = Seq.empty) extends CQLQueryPart[GroupPart](queries) {
+  override def qb: CQLQuery = queries match {
+    case Seq() => CQLQuery.empty
+    case _ => QueryBuilder.Select.groupBy(queries)
+  }
+
+  override def instance(l: Seq[CQLQuery]): GroupPart = new GroupPart(l)
+}
+
+object GroupPart {
+  def empty: GroupPart = new GroupPart(Seq.empty)
 }
 
 sealed class OrderPart(override val queries: Seq[CQLQuery] = Seq.empty) extends CQLQueryPart[OrderPart](queries) {
@@ -71,7 +87,7 @@ sealed class OrderPart(override val queries: Seq[CQLQuery] = Seq.empty) extends 
 }
 
 object OrderPart {
-  def empty: OrderPart = new OrderPart(Nil)
+  def empty: OrderPart = new OrderPart(Seq.empty)
 }
 
 sealed class FilteringPart(override val queries: Seq[CQLQuery] = Seq.empty) extends CQLQueryPart[FilteringPart](queries) {
@@ -178,7 +194,7 @@ sealed class OptionPart(override val queries: Seq[CQLQuery] = Seq.empty) extends
 
 object OptionPart {
 
-  def apply(qb: CQLQuery): OptionPart = new OptionPart(qb :: Nil)
+  def apply(qb: CQLQuery): OptionPart = new OptionPart(Seq(qb))
 
   def empty: OptionPart = new OptionPart()
 }

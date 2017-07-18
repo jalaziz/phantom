@@ -16,21 +16,21 @@
 package com.outworkers.phantom.builder.query
 
 import com.datastax.driver.core.{ConsistencyLevel, Session}
-import com.outworkers.phantom.{CassandraTable, Row}
-import com.outworkers.phantom.builder.{ConsistencyBound, LimitBound, OrderBound, WhereBound, _}
 import com.outworkers.phantom.builder.clauses._
 import com.outworkers.phantom.builder.primitives.Primitives.{LongPrimitive, StringPrimitive}
 import com.outworkers.phantom.builder.query.engine.CQLQuery
 import com.outworkers.phantom.builder.query.prepared.{PrepareMark, PreparedSelectBlock}
 import com.outworkers.phantom.builder.syntax.CQLSyntax
+import com.outworkers.phantom.builder.{ConsistencyBound, LimitBound, OrderBound, WhereBound, _}
 import com.outworkers.phantom.connectors.KeySpace
+import com.outworkers.phantom.{CassandraTable, Row}
 import shapeless.ops.hlist.{Prepend, Reverse}
 import shapeless.{::, =:!=, HList, HNil}
 
 import scala.annotation.implicitNotFound
 import scala.concurrent.{ExecutionContextExecutor, Future => ScalaFuture}
 
-class SelectQuery[
+case class SelectQuery[
   Table <: CassandraTable[Table, _],
   Record,
   Limit <: LimitBound,
@@ -41,9 +41,10 @@ class SelectQuery[
 ](
   protected[phantom] val table: Table,
   protected[phantom] val rowFunc: Row => Record,
-  val init: CQLQuery,
+  init: CQLQuery,
   protected[phantom] val wherePart: WherePart = WherePart.empty,
   protected[phantom] val orderPart: OrderPart = OrderPart.empty,
+  protected[phantom] val groupPart: GroupPart = GroupPart.empty,
   protected[phantom] val limitedPart: LimitedPart = LimitedPart.empty,
   protected[phantom] val filteringPart: FilteringPart = FilteringPart.empty,
   protected[phantom] val usingPart: UsingPart = UsingPart.empty,
@@ -96,18 +97,7 @@ class SelectQuery[
   }
 
   def allowFiltering(): SelectQuery[Table, Record, Limit, Order, Status, Chain, PS] = {
-    new SelectQuery(
-      table = table,
-      rowFunc = rowFunc,
-      init = init,
-      wherePart = wherePart,
-      orderPart = orderPart,
-      limitedPart = limitedPart,
-      filteringPart = filteringPart append QueryBuilder.Select.allowFiltering(),
-      usingPart = usingPart,
-      count = count,
-      options = options
-    )
+    copy(filteringPart = filteringPart append QueryBuilder.Select.allowFiltering())
   }
 
   def prepare[Rev <: HList]()(
@@ -133,18 +123,7 @@ class SelectQuery[
     implicit ev: Chain =:= Unchainned,
     prepend: Prepend.Aux[HL, PS, Out]
   ): QueryType[Table, Record, Limit, Order, Status, Chainned, Out] = {
-    new SelectQuery(
-      table = table,
-      rowFunc = rowFunc,
-      init = init,
-      wherePart = wherePart append QueryBuilder.Update.where(condition(table).qb),
-      orderPart = orderPart,
-      limitedPart = limitedPart,
-      filteringPart = filteringPart,
-      usingPart = usingPart,
-      count = count,
-      options = options
-    )
+    copy(wherePart = wherePart append QueryBuilder.Update.where(condition(table).qb))
   }
 
   /**
@@ -161,33 +140,11 @@ class SelectQuery[
     implicit ev: Chain =:= Chainned,
     prepend: Prepend.Aux[HL, PS, Out]
   ): QueryType[Table, Record, Limit, Order, Status, Chainned, Out] = {
-    new SelectQuery(
-      table = table,
-      rowFunc = rowFunc,
-      init = init,
-      wherePart = wherePart append QueryBuilder.Update.and(condition(table).qb),
-      orderPart = orderPart,
-      limitedPart = limitedPart,
-      filteringPart = filteringPart,
-      usingPart = usingPart,
-      count = count,
-      options = options
-    )
+    copy(wherePart = wherePart append QueryBuilder.Update.and(condition(table).qb))
   }
 
   def using(clause: UsingClause.Condition): SelectQuery[Table, Record, Limit, Order, Status, Chainned, PS] = {
-    new SelectQuery(
-      table = table,
-      rowFunc = rowFunc,
-      init = init,
-      wherePart = wherePart,
-      orderPart = orderPart,
-      limitedPart = limitedPart,
-      filteringPart = filteringPart,
-      usingPart = usingPart append clause.qb,
-      count = count,
-      options = options
-    )
+    copy(usingPart = usingPart append clause.qb)
   }
 
   override def consistencyLevel_=(level: ConsistencyLevel)(
@@ -195,31 +152,9 @@ class SelectQuery[
     session: Session
   ): SelectQuery[Table, Record, Limit, Order, Specified, Chain, PS] = {
     if (session.protocolConsistency) {
-      new SelectQuery(
-        table = table,
-        rowFunc = rowFunc,
-        init = init,
-        wherePart = wherePart,
-        orderPart = orderPart,
-        limitedPart = limitedPart,
-        filteringPart = filteringPart,
-        usingPart = usingPart,
-        count = count,
-        options = options.consistencyLevel_=(level)
-      )
+      copy(options = options.consistencyLevel_=(level))
     } else {
-      new SelectQuery(
-        table = table,
-        rowFunc = rowFunc,
-        init = init,
-        wherePart = wherePart,
-        orderPart = orderPart,
-        limitedPart = limitedPart,
-        filteringPart = filteringPart,
-        usingPart = usingPart append QueryBuilder.consistencyLevel(level.toString),
-        count = count,
-        options = options
-      )
+      copy(usingPart = usingPart append QueryBuilder.consistencyLevel(level.toString))
     }
   }
 
@@ -228,57 +163,28 @@ class SelectQuery[
   final def limit(ps: PrepareMark)(
     implicit ev: Limit =:= Unlimited
   ): QueryType[Table, Record, Limited, Order, Status, Chain, Int ::PS] = {
-    new SelectQuery(
-      table = table,
-      rowFunc = rowFunc,
-      init = init,
-      wherePart = wherePart,
-      orderPart = orderPart,
-      limitedPart = limitedPart append QueryBuilder.limit(ps.qb.queryString),
-      filteringPart = filteringPart,
-      usingPart = usingPart,
-      count = count,
-      options = options
-    )
+    copy(limitedPart = limitedPart append QueryBuilder.limit(ps.qb.queryString))
   }
-
-
 
   @implicitNotFound("A limit was already specified for this query.")
   def limit(limit: Int)(
     implicit ev: Limit =:= Unlimited
   ): QueryType[Table, Record, Limited, Order, Status, Chain, PS] = {
-    new SelectQuery(
-      table = table,
-      rowFunc = rowFunc,
-      init = init,
-      wherePart = wherePart,
-      orderPart = orderPart,
-      limitedPart = limitedPart append QueryBuilder.limit(limit.toString),
-      filteringPart = filteringPart,
-      usingPart = usingPart,
-      count = count,
-      options = options
-    )
+    copy(limitedPart = limitedPart append QueryBuilder.limit(limit.toString))
   }
 
+  @implicitNotFound("You have already defined an ordering clause on this query.")
+  final def groupBy(clauses: (Table => GroupingColumn[Table, Record, _])*)(
+    implicit ev: Order =:= Unordered
+  ): SelectQuery[Table, Record, Limit, Ordered, Status, Chain, PS] = {
+    copy(groupPart = groupPart append QueryBuilder.Select.groupBy(clauses.map(_(table).qb)))
+  }
 
   @implicitNotFound("You have already defined an ordering clause on this query.")
   final def orderBy(clauses: (Table => OrderingClause.Condition)*)(
     implicit ev: Order =:= Unordered
   ): SelectQuery[Table, Record, Limit, Ordered, Status, Chain, PS] = {
-    new SelectQuery(
-      table,
-      rowFunc,
-      init,
-      wherePart,
-      orderPart append clauses.map(_(table).qb).toList,
-      limitedPart,
-      filteringPart,
-      usingPart = usingPart,
-      count,
-      options = options
-    )
+    copy(orderPart = orderPart append clauses.map(_(table).qb).toList)
   }
 
   /**
@@ -296,19 +202,7 @@ class SelectQuery[
     ec: ExecutionContextExecutor
   ): ScalaFuture[Option[Inner]] = {
     val enforceLimit = if (count) LimitedPart.empty else limitedPart append QueryBuilder.limit(1.toString)
-
-    new SelectQuery(
-      table = table,
-      rowFunc = rowFunc,
-      init = init,
-      wherePart = wherePart,
-      orderPart = orderPart,
-      limitedPart = enforceLimit,
-      filteringPart = filteringPart,
-      usingPart = usingPart,
-      count = count,
-      options = options
-    ).optionalFetch()
+    copy(limitedPart = enforceLimit).optionalFetch()
   }
 
   /**
@@ -325,19 +219,7 @@ class SelectQuery[
     ec: ExecutionContextExecutor
   ): ScalaFuture[Option[Record]] = {
     val enforceLimit = if (count) LimitedPart.empty else limitedPart append QueryBuilder.limit(1.toString)
-
-    new SelectQuery(
-      table = table,
-      rowFunc = rowFunc,
-      init = init,
-      wherePart = wherePart,
-      orderPart = orderPart,
-      limitedPart = enforceLimit,
-      filteringPart = filteringPart,
-      usingPart = usingPart,
-      count = count,
-      options = options
-    ).singleFetch()
+    copy(limitedPart = enforceLimit).singleFetch()
   }
 }
 
@@ -349,20 +231,18 @@ private[phantom] class RootSelectBlock[
   @implicitNotFound("You haven't provided a KeySpace in scope. Use a Connector to automatically inject one.")
   def all()(implicit keySpace: KeySpace): SelectQuery.Default[T, R] = {
     clause match {
-      case Some(opt) => {
+      case Some(opt) =>
         new SelectQuery(
           table,
           rowFunc,
           QueryBuilder.Select.select(table.tableName, keySpace.name, opt)
         )
-      }
-      case None => {
+      case None =>
         new SelectQuery(
           table,
           rowFunc,
           QueryBuilder.Select.select(table.tableName, keySpace.name, columns: _*)
         )
-      }
     }
   }
 
@@ -409,6 +289,7 @@ private[phantom] class RootSelectBlock[
       QueryBuilder.Select.select(table.tableName, keySpace.name, f1.qb),
       WherePart.empty,
       OrderPart.empty,
+      GroupPart.empty,
       LimitedPart.empty,
       FilteringPart.empty,
       UsingPart.empty,
@@ -425,6 +306,7 @@ private[phantom] class RootSelectBlock[
       QueryBuilder.Select.select(table.tableName, keySpace.name, f1(table).qb),
       WherePart.empty,
       OrderPart.empty,
+      GroupPart.empty,
       LimitedPart.empty,
       FilteringPart.empty,
       UsingPart.empty,
@@ -440,6 +322,7 @@ private[phantom] class RootSelectBlock[
       QueryBuilder.Select.count(table.tableName, keySpace.name),
       WherePart.empty,
       OrderPart.empty,
+      GroupPart.empty,
       LimitedPart.empty,
       FilteringPart.empty,
       UsingPart.empty,

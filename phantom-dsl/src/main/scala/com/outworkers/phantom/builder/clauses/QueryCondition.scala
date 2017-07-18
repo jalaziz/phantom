@@ -18,9 +18,9 @@ package com.outworkers.phantom.builder.clauses
 import com.outworkers.phantom.builder.QueryBuilder
 import com.outworkers.phantom.builder.query.engine.CQLQuery
 import com.outworkers.phantom.builder.syntax.CQLSyntax
-import com.outworkers.phantom.column.AbstractColumn
+import com.outworkers.phantom.column.{AbstractColumn, Column}
 import com.outworkers.phantom.dsl.?
-import com.outworkers.phantom.Row
+import com.outworkers.phantom.{CassandraTable, Row}
 import shapeless.{::, HList, HNil}
 
 abstract class QueryCondition[T <: HList](val qb: CQLQuery)
@@ -97,6 +97,11 @@ object CompareAndSetClause extends Clause {
 object OrderingClause extends Clause {
   class Condition(override val qb: CQLQuery) extends QueryCondition[HNil](qb)
 }
+
+object GroupingClause extends Clause {
+  class Condition(override val qb: CQLQuery) extends QueryCondition[HNil](qb)
+}
+
 object UsingClause extends Clause {
   class Condition(override val qb: CQLQuery) extends QueryCondition[HNil](qb)
 }
@@ -127,6 +132,14 @@ private[phantom] class OrderingColumn[RR](col: AbstractColumn[RR]) {
   def ascending: OrderingClause.Condition = new OrderingClause.Condition(QueryBuilder.Select.Ordering.ascending(col.name))
   def desc: OrderingClause.Condition = new OrderingClause.Condition(QueryBuilder.Select.Ordering.descending(col.name))
   def descending: OrderingClause.Condition = new OrderingClause.Condition(QueryBuilder.Select.Ordering.descending(col.name))
+}
+
+private[phantom] class GroupingColumn[
+  T <: CassandraTable[T, R],
+  R,
+  RR
+](col: Column[T, R, RR]) {
+  def qb: CQLQuery = CQLQuery(col.name)
 }
 
 trait UsingClauseOperations {
