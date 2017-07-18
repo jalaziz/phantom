@@ -65,7 +65,9 @@ The ```Optional``` part is only handled at a DSL level, it's not translated to C
 It is also possible to express your entire table logic using just `Col` or `Column` if you. 
 `Primitives` that do the real heavy lifting, which makes the examples below equivalent:
 
-```scala
+```tut:silent
+
+import com.outworkers.phantom.dsl._
 
 class Recipes extends Table[Recipes, Recipe] {
 
@@ -87,8 +89,9 @@ class Recipes extends Table[Recipes, Recipe] {
 
 The same can be achieved by writing the below code:
 
-```scala
-class Recipes extends Table[Recipes, Recipe] {
+```tut:silent
+
+class Recipes2 extends Table[Recipes2, Recipe] {
 
   object url extends Col[String] with PartitionKey
 
@@ -137,7 +140,8 @@ this is valid for any kind of type that requires freezing, including:
 This also makes it possibly to derive arbitrary encodings for very complex types automatically.
 This feature is only available in phantom-pro using the `autotables` module.
 
-```scala
+```tut:silent
+import com.outworkers.phantom.dsl._
 import com.outworkers.phantom.auto._
 
 case class SubRecord(
@@ -155,7 +159,9 @@ object SubRecord {
 This would allow you to use `SubRecord` as a native type with all marshalling being at compile time with 0 runtime overhead.
 `SubRecord` is now a valid column type.
 
-```scala
+```tut:silent
+
+import com.outworkers.phantom.dsl._
 
 case class Record(
   id: UUID,
@@ -197,7 +203,7 @@ def derive[
 
 In practice, using `derive` for a simple scenario looks like this:
 
-```scala
+```tut:silent
 
 import com.outworkers.phantom.dsl._
 
@@ -208,9 +214,9 @@ object Test {
 }
 ```
 
-In essence, this is pretty straighforward, and now what I can do in any Cassandra table is this:
+In essence, this is pretty straightforward, and now what I can do in any Cassandra table is this:
 
-```scala
+```tut:silent
 
 case class Wrapper(id: UUID, test: Test)
 
@@ -257,7 +263,9 @@ That's why you should prefer to not use the now deprecated column aliases and in
 
 ##### Old DSL
 
-```scala
+```tut:silent
+
+import com.outworkers.phantom.dsl._
 
 case class Jdk8Row(
   pkey: String,
@@ -283,7 +291,10 @@ abstract class PrimitivesJdk8 extends CassandraTable[PrimitivesJdk8, Jdk8Row] wi
 
 ##### The new compact table DSL.
 
-```scala
+```tut:silent
+
+import com.outworkers.phantom.dsl._
+
 abstract class PrimitivesJdk8 extends Table[PrimitivesJdk8, Jdk8Row] {
 
   object pkey extends StringColumn with PartitionKey
@@ -314,10 +325,10 @@ exception is `java.time.LocalDateTimeColumn` which is indexed with both imports.
 
 These will be by default available under `import com.outworkers.phantom.jdk8.indexed._`
 
-| phantom columns               | Java/Scala type           | Cassandra type      |
-| ---------------               |-------------------        | -----------------   |
-| OffsetDateTimeColumn          | java.time.OffsetDateTime  | timestamp           |
-| ZonedDateTimeColumn           | java.time.ZonedDateTime   | timestamp           |
-| LocalDate                     | java.time.LocalDate       | localdate           |
-| LocalDateTime                 | java.time.LocalDateTime   | timestamp           |
+| phantom columns               | Java/Scala type             | Cassandra type      |
+| ---------------               |-------------------          | -----------------   |
+| OffsetDateTimeColumn          | `java.time.OffsetDateTime`  | timestamp           |
+| ZonedDateTimeColumn           | `java.time.ZonedDateTime`   | timestamp           |
+| LocalDate                     | `java.time.LocalDate`       | localdate           |
+| LocalDateTime                 | `java.time.LocalDateTime`   | timestamp           |
 

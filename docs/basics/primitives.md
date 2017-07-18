@@ -67,6 +67,8 @@ It is also possible to express your entire table logic using just `Col` or `Colu
 
 ```scala
 
+import com.outworkers.phantom.dsl._
+
 class Recipes extends Table[Recipes, Recipe] {
 
   object url extends StringColumn with PartitionKey
@@ -88,7 +90,8 @@ class Recipes extends Table[Recipes, Recipe] {
 The same can be achieved by writing the below code:
 
 ```scala
-class Recipes extends Table[Recipes, Recipe] {
+
+class Recipes2 extends Table[Recipes2, Recipe] {
 
   object url extends Col[String] with PartitionKey
 
@@ -138,6 +141,7 @@ This also makes it possibly to derive arbitrary encodings for very complex types
 This feature is only available in phantom-pro using the `autotables` module.
 
 ```scala
+import com.outworkers.phantom.dsl._
 import com.outworkers.phantom.auto._
 
 case class SubRecord(
@@ -156,6 +160,8 @@ This would allow you to use `SubRecord` as a native type with all marshalling be
 `SubRecord` is now a valid column type.
 
 ```scala
+
+import com.outworkers.phantom.dsl._
 
 case class Record(
   id: UUID,
@@ -208,7 +214,7 @@ object Test {
 }
 ```
 
-In essence, this is pretty straighforward, and now what I can do in any Cassandra table is this:
+In essence, this is pretty straightforward, and now what I can do in any Cassandra table is this:
 
 ```scala
 
@@ -259,6 +265,8 @@ That's why you should prefer to not use the now deprecated column aliases and in
 
 ```scala
 
+import com.outworkers.phantom.dsl._
+
 case class Jdk8Row(
   pkey: String,
   offsetDateTime: OffsetDateTime,
@@ -284,6 +292,9 @@ abstract class PrimitivesJdk8 extends CassandraTable[PrimitivesJdk8, Jdk8Row] wi
 ##### The new compact table DSL.
 
 ```scala
+
+import com.outworkers.phantom.dsl._
+
 abstract class PrimitivesJdk8 extends Table[PrimitivesJdk8, Jdk8Row] {
 
   object pkey extends StringColumn with PartitionKey
@@ -314,10 +325,10 @@ exception is `java.time.LocalDateTimeColumn` which is indexed with both imports.
 
 These will be by default available under `import com.outworkers.phantom.jdk8.indexed._`
 
-| phantom columns               | Java/Scala type           | Cassandra type      |
-| ---------------               |-------------------        | -----------------   |
-| OffsetDateTimeColumn          | java.time.OffsetDateTime  | timestamp           |
-| ZonedDateTimeColumn           | java.time.ZonedDateTime   | timestamp           |
-| LocalDate                     | java.time.LocalDate       | localdate           |
-| LocalDateTime                 | java.time.LocalDateTime   | timestamp           |
+| phantom columns               | Java/Scala type             | Cassandra type      |
+| ---------------               |-------------------          | -----------------   |
+| OffsetDateTimeColumn          | `java.time.OffsetDateTime`  | timestamp           |
+| ZonedDateTimeColumn           | `java.time.ZonedDateTime`   | timestamp           |
+| LocalDate                     | `java.time.LocalDate`       | localdate           |
+| LocalDateTime                 | `java.time.LocalDateTime`   | timestamp           |
 

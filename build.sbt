@@ -164,9 +164,9 @@ lazy val readme = (project in file("readme"))
   .settings(sharedSettings ++ Publishing.noPublishSettings)
   .settings(
     tutSourceDirectory := sourceDirectory.value / "main" / "tut",
-    tutTargetDirectory := phantom.base / "docs",
+    tutTargetDirectory := phantom.base / "docs",d
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "macro-compat" % Versions.macrocompat % "tut",
+      "org.typelevel" %% "macro-compat" % Versions.macrocompat,
       "org.scala-lang" % "scala-compiler" % scalaVersion.value % "tut",
       compilerPlugin("org.scalamacros" % "paradise" % Versions.macroParadise cross CrossVersion.full),
       "com.outworkers" %% "util-samplers" % Versions.util % "tut",
