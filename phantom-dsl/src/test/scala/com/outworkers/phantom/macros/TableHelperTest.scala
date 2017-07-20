@@ -19,6 +19,8 @@ import com.outworkers.phantom.PhantomSuite
 import com.outworkers.phantom.builder.primitives.Primitive
 import org.joda.time.DateTime
 import com.outworkers.phantom.dsl._
+import com.outworkers.phantom.tables.Article
+import com.outworkers.phantom.tables.sasi.SASIIndexedArticles
 import org.scalamock.scalatest.MockFactory
 import com.outworkers.util.samplers._
 
@@ -29,10 +31,10 @@ case class Ev2(
   set: Set[String]
 )
 
-class Events2 extends CassandraTable[Events2, Ev2] {
-  object partition extends UUIDColumn(this) with PartitionKey
-  object id extends UUIDColumn(this) with PartitionKey
-  object map extends SetColumn[String](this)
+abstract class Events2 extends Table[Events2, Ev2] {
+  object partition extends UUIDColumn with PartitionKey
+  object id extends UUIDColumn with PartitionKey
+  object set extends SetColumn[String]
 }
 
 case class ClusteredRecord(
@@ -42,11 +44,11 @@ case class ClusteredRecord(
   id3: UUID
 )
 
-class ClusteredTable extends CassandraTable[ClusteredTable, ClusteredRecord] {
-  object partition extends UUIDColumn(this) with PartitionKey
-  object id extends UUIDColumn(this) with ClusteringOrder with Descending
-  object id2 extends UUIDColumn(this) with ClusteringOrder with Descending
-  object id3 extends UUIDColumn(this) with ClusteringOrder with Ascending
+abstract class ClusteredTable extends Table[ClusteredTable, ClusteredRecord] {
+  object partition extends UUIDColumn with PartitionKey
+  object id extends UUIDColumn with ClusteringOrder with Descending
+  object id2 extends UUIDColumn with ClusteringOrder with Descending
+  object id3 extends UUIDColumn with ClusteringOrder with Ascending
 }
 
 class TableHelperTest extends PhantomSuite with MockFactory {
@@ -55,12 +57,12 @@ class TableHelperTest extends PhantomSuite with MockFactory {
 
     case class SampleEvent(id: String, map: Map[Long, DateTime])
 
-    class Events extends CassandraTable[Events, SampleEvent] {
-      object id extends UUIDColumn(this) with PartitionKey
-      object map extends MapColumn[Long, Long](this)
+    abstract class Events extends Table[Events, SampleEvent] {
+      object id extends UUIDColumn with PartitionKey
+      object map extends MapColumn[Long, Long]
     }
 
-    val ev = new Events()
+    val ev = new Events() with database.Connector
     intercept[NotImplementedError] {
       ev.fromRow(null.asInstanceOf[Row])
     }
@@ -75,14 +77,14 @@ class TableHelperTest extends PhantomSuite with MockFactory {
       map: Map[Long, DateTime]
     )
 
-    class Events extends CassandraTable[Events, Event] {
-      object id extends UUIDColumn(this) with PartitionKey
-      object text extends StringColumn(this)
-      object map extends MapColumn[Long, Long](this)
-      object length extends IntColumn(this)
+    abstract class Events extends Table[Events, Event] {
+      object id extends UUIDColumn with PartitionKey
+      object text extends StringColumn
+      object map extends MapColumn[Long, Long]
+      object length extends IntColumn
     }
 
-    val ev = new Events()
+    val ev = new Events() with database.Connector
     intercept[NotImplementedError] {
       ev.fromRow(null.asInstanceOf[Row])
     }
@@ -92,12 +94,12 @@ class TableHelperTest extends PhantomSuite with MockFactory {
 
     case class SampleEvent(id: UUID, map: Map[Long, DateTime])
 
-    class Events extends CassandraTable[Events, SampleEvent] {
-      object id extends UUIDColumn(this) with PartitionKey
-      object map extends MapColumn[Long, Long](this)
+    abstract class Events extends Table[Events, SampleEvent] {
+      object id extends UUIDColumn with PartitionKey
+      object map extends MapColumn[Long, Long]
     }
 
-    val ev = new Events()
+    val ev = new Events() with database.Connector
     intercept[NotImplementedError] {
       ev.fromRow(null.asInstanceOf[Row])
     }
@@ -106,12 +108,12 @@ class TableHelperTest extends PhantomSuite with MockFactory {
   it should "not generate a fromRow if  the collection type is different" in {
     case class Ev(id: UUID, set: List[Int])
 
-    class Events extends CassandraTable[Events, Ev] {
-      object id extends UUIDColumn(this) with PartitionKey
-      object map extends SetColumn[Int](this)
+    abstract class Events extends Table[Events, Ev] {
+      object id extends UUIDColumn with PartitionKey
+      object map extends SetColumn[Int]
     }
 
-    val ev = new Events()
+    val ev = new Events( )with database.Connector
     intercept[NotImplementedError] {
       ev.fromRow(null.asInstanceOf[Row])
     }
@@ -120,12 +122,12 @@ class TableHelperTest extends PhantomSuite with MockFactory {
   it should "not generate a fromRow if the argument passed to a list column is different" in {
     case class Ev(id: UUID, set: List[Int])
 
-    class Events extends CassandraTable[Events, Ev] {
-      object id extends UUIDColumn(this) with PartitionKey
-      object map extends ListColumn[String](this)
+    abstract class Events extends Table[Events, Ev] {
+      object id extends UUIDColumn with PartitionKey
+      object map extends ListColumn[String]
     }
 
-    val ev = new Events()
+    val ev = new Events() with database.Connector
     intercept[NotImplementedError] {
       ev.fromRow(null.asInstanceOf[Row])
     }
@@ -134,33 +136,33 @@ class TableHelperTest extends PhantomSuite with MockFactory {
   it should "not generate a fromRow if the argument passed to a set column is different" in {
     case class Ev(id: UUID, set: Set[Int])
 
-    class Events extends CassandraTable[Events, Ev] {
-      object id extends UUIDColumn(this) with PartitionKey
-      object map extends SetColumn[String](this)
+    abstract class Events extends Table[Events, Ev] {
+      object id extends UUIDColumn with PartitionKey
+      object map extends SetColumn[String]
     }
 
-    val ev = new Events()
+    val ev = new Events() with database.Connector
     intercept[NotImplementedError] {
       ev.fromRow(null.asInstanceOf[Row])
     }
   }
 
   it should "correctly retrieve a list of keys" in {
-    val table = new ClusteredTable
+    val table = new ClusteredTable with database.Connector
     val fields = TableHelper[ClusteredTable, ClusteredRecord].fields(table)
-    fields shouldEqual Seq(table.partition, table.id, table.id2, table.id3)
+    fields should contain theSameElementsInOrderAs Seq(table.partition, table.id, table.id2, table.id3)
   }
 
+  it should "retrieve clustering keys in the order they are written" in {
+    val table = new ClusteredTable with database.Connector
+    table.clusteringColumns should contain theSameElementsInOrderAs Seq(table.id, table.id2, table.id3)
+  }
+
+
   it should "generate a fromRow method from a partial table definition" in {
-
     val row = stub[Row]
+    val ev = new Events2() with database.Connector
 
-    val instance = Ev2(gen[UUID], genList[String]().toSet)
-
-    val ev = new Events2()
-
-    intercept[NullPointerException] {
-      ev.fromRow(row)
-    }
+    ev.fromRow(row)
   }
 }

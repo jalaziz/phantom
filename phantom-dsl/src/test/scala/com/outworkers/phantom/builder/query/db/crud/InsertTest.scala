@@ -15,6 +15,7 @@
  */
 package com.outworkers.phantom.builder.query.db.crud
 
+import com.datastax.driver.core.utils.UUIDs
 import com.outworkers.phantom.PhantomSuite
 import com.outworkers.phantom.dsl._
 import com.outworkers.phantom.tables._
@@ -26,20 +27,34 @@ class InsertTest extends PhantomSuite {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    database.listCollectionTable.insertSchema()
-    database.primitives.insertSchema()
-    database.optDerivedTable.insertSchema()
+    database.listCollectionTable.createSchema()
+    database.primitives.createSchema()
+    database.oldPrimitives.createSchema()
+    database.optDerivedTable.createSchema()
 
     if (session.v4orNewer) {
-      database.primitivesCassandra22.insertSchema()
+      database.primitivesCassandra22.createSchema()
     }
 
-    database.testTable.insertSchema()
-    database.recipes.insertSchema()
+    database.testTable.createSchema()
+    database.recipes.createSchema()
+  }
+
+  "Insert" should "work fine for primitives columns defined with the old DSL" in {
+    val row = gen[OldPrimitiveRecord].copy(timeuuid = UUIDs.timeBased())
+
+    val chain = for {
+      store <- database.oldPrimitives.store(row).future()
+      one <- database.oldPrimitives.select.where(_.pkey eqs row.pkey).one
+    } yield one
+
+    whenReady(chain) { res =>
+      res shouldBe defined
+    }
   }
 
   "Insert" should "work fine for primitives columns" in {
-    val row = gen[Primitive]
+    val row = gen[PrimitiveRecord]
 
     val chain = for {
       store <- database.primitives.store(row).future()

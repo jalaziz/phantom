@@ -27,11 +27,11 @@ import shapeless.syntax.std.tuple._
 class SelectJsonTest extends PhantomSuite {
   override def beforeAll(): Unit = {
     super.beforeAll()
-    database.primitives.insertSchema()
+    database.primitives.createSchema()
   }
 
   "A JSON selection clause" should "select an entire row as JSON" in {
-    val row = gen[Primitive]
+    val row = gen[PrimitiveRecord]
 
     val chain = for {
       store <- database.primitives.store(row).future()
@@ -52,7 +52,7 @@ class SelectJsonTest extends PhantomSuite {
   }
 
   "A JSON selection clause" should "8 columns as JSON" in {
-    val row = gen[Primitive]
+    val row = gen[PrimitiveRecord]
     val expected = row.take(Nat._8)
 
     val chain = for {

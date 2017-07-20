@@ -15,17 +15,38 @@
  */
 package com.outworkers.phantom.tables
 
-import com.outworkers.phantom.builder.query.InsertQuery
-import com.outworkers.phantom.dsl._
+import com.outworkers.phantom.builder.primitives.{DerivedField, DerivedTupleField}
 
 import scala.concurrent.Future
+import com.outworkers.phantom.dsl._
 
-abstract class TupleTypeTable extends CassandraTable[TupleTypeTable, (UUID, String, String)] with RootConnector {
-  object id extends UUIDColumn(this) with PartitionKey
-  object name extends StringColumn(this)
-  object description extends StringColumn(this)
+abstract class TupleTypeTable extends Table[
+  TupleTypeTable,
+  (UUID, String, String)
+] {
+
+  object id extends UUIDColumn with PartitionKey
+  object name extends StringColumn
+  object description extends StringColumn
 
   def findById(id: UUID): Future[Option[(UUID, String, String)]] = {
     select.where(_.id eqs id).one()
   }
+}
+
+case class DerivedRecord(
+  id: UUID,
+  description: String,
+  rec: DerivedField,
+  complex: DerivedTupleField
+)
+
+abstract class DerivedPrimitivesTable extends Table[
+  DerivedPrimitivesTable,
+  DerivedRecord
+] {
+  object id extends UUIDColumn with PartitionKey
+  object description extends StringColumn
+  object rec extends Col[DerivedField]
+  object complex extends Col[DerivedTupleField]
 }

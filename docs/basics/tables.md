@@ -24,21 +24,21 @@ case class Recipe(
   uid: UUID
 )
 
-abstract class Recipes extends CassandraTable[Recipes, Recipe] with RootConnector {
+abstract class Recipes extends Table[Recipes, Recipe] {
 
-  object url extends StringColumn(this) with PartitionKey
+  object url extends StringColumn with PartitionKey
 
-  object description extends OptionalStringColumn(this)
+  object description extends OptionalStringColumn
 
-  object ingredients extends ListColumn[String](this)
+  object ingredients extends ListColumn[String]
 
-  object servings extends OptionalIntColumn(this)
+  object servings extends OptionalIntColumn
 
-  object lastcheckedat extends DateTimeColumn(this)
+  object lastcheckedat extends DateTimeColumn
 
-  object props extends MapColumn[String, String](this)
+  object props extends MapColumn[String, String]
 
-  object uid extends UUIDColumn(this)
+  object uid extends UUIDColumn
 }
 
 class MyDb(override val connector: CassandraConnection) extends Database[MyDb](connector) {
@@ -58,6 +58,9 @@ scenario, the macro engine will infer the table name as "Recipes", based on the 
 override the table name manually inside the table definition.
 
 ```scala
+
+import com.outworkers.phantom.dsl._
+
 class MyDb(override val connector: CassandraConnection) extends Database[MyDb](connector) {
   object recipes extends Recipes with Connector {
     override def tableName: String = "recipes"
@@ -65,13 +68,41 @@ class MyDb(override val connector: CassandraConnection) extends Database[MyDb](c
 }
 ```
 
+### The name of the table can be controlled using `NamingStrategy`.
 
+A single import controls how table names are generated. Phantom offers three variants,
+implemented via `com.outworkers.phantom.NamingStrategy`. These control only the `tableName`,
+not the columns or anything else.
+
+
+| Strategy                      | Casing                        |
+| ----------------------------- | ----------------------------- |
+| `NamingStrategy.CamelCase`    | lowCamelCase                  |
+| `NamingStrategy.SnakeCase`    | low_snake_case                |
+| `NamingStrategy.Default`      | Preserves the user input      |
+
+All available imports will have two flavours. It's important to note they only work
+when imported in the scope where tables are defined. That's where the macro will evaluate
+the call site for implicits.
+
+```scala
+import com.outworkers.phantom.NamingStrategy.CamelCase.caseSensitive
+import com.outworkers.phantom.NamingStrategy.CamelCase.caseInsensitive
+
+import com.outworkers.phantom.NamingStrategy.SnakeCase.caseSensitive
+import com.outworkers.phantom.NamingStrategy.SnakeCase.caseInsensitive
+
+import com.outworkers.phantom.NamingStrategy.Default.caseSensitive
+import com.outworkers.phantom.NamingStrategy.Default.caseInsensitive
+```
 
 <a id="data-modeling">Data modeling with phantom</a>
 ====================================================
 <a href="#table-of-contents">back to top</a>
 
 ```scala
+
+import java.util.UUID
 import com.outworkers.phantom.dsl._
 
 case class ExampleModel (
@@ -82,12 +113,12 @@ case class ExampleModel (
   test: Option[Int]
 )
 
-abstract class ExampleRecord extends CassandraTable[ExampleRecord, ExampleModel] with RootConnector {
-  object id extends UUIDColumn(this) with PartitionKey
-  object timestamp extends DateTimeColumn(this) with ClusteringOrder with Ascending
-  object name extends StringColumn(this)
-  object props extends MapColumn[ExampleRecord, ExampleModel, String, String](this)
-  object test extends OptionalIntColumn(this)
+abstract class ExampleRecord extends Table[ExampleRecord, ExampleModel] {
+  object id extends UUIDColumn with PartitionKey
+  object timestamp extends DateTimeColumn with ClusteringOrder with Ascending
+  object name extends StringColumn
+  object props extends MapColumn[String, String]
+  object test extends OptionalIntColumn
 ```
 
 
@@ -204,12 +235,12 @@ case class Record(
   email: String
 )
 
-abstract class MyTable extends CassandraTable[MyTable, Record] {
+abstract class MyTable extends Table[MyTable, Record] {
 
-  object id extends UUIDColumn(this) with PartitionKey
-  object name extends StringColumn(this)
-  object firstName extends StringColumn(this)
-  object email extends StringColumn(this)
+  object id extends UUIDColumn with PartitionKey
+  object name extends StringColumn
+  object firstName extends StringColumn
+  object email extends StringColumn
 
   // Phantom now auto-generates the below method
   def store(record: Record): InsertQuery.Default[MyTable, Record] = {
@@ -238,7 +269,7 @@ be mapped.
 
 So the new type of the generated store method will now be:
 
-```
+```scala
   def store(
     countryCode: String,
     record: Record
@@ -258,6 +289,7 @@ by the `Record` type.
 
 ```scala
 
+import java.util.UUID
 import com.outworkers.phantom.dsl._
 import scala.concurrent.duration._
 
@@ -268,15 +300,15 @@ case class Record(
   email: String
 )
 
-abstract class RecordsByCountry extends CassandraTable[RecordsByCountry, Record] {
-  object countryCode extends StringColumn(this) with PartitionKey
-  object id extends UUIDColumn(this) with PrimaryKey
-  object name extends StringColumn(this)
-  object firstName extends StringColumn(this)
-  object email extends StringColumn(this)
+abstract class RecordsByCountry extends Table[RecordsByCountry, Record] {
+  object countryCode extends StringColumn with PartitionKey
+  object id extends UUIDColumn with PrimaryKey
+  object name extends StringColumn
+  object firstName extends StringColumn
+  object email extends StringColumn
 
   // Phantom now auto-generates the below method
-  def store(countryCode: String, record: Record): InsertQuery.Default[MyTable, Record] = {
+  def store(countryCode: String, record: Record): InsertQuery.Default[RecordsByCountry, Record] = {
     insert
       .value(_.countryCode, countryCode)
       .value(_.id, record.id)
@@ -293,12 +325,12 @@ key that would allow us to retrieve all records by both `country` and `region`.
 
 So the new type of the generated store method will now be:
 
-```
-  def store(
-    countryCode: String,
-    region: String,
-    record: Record
-  ): InsertQuery.Default[RecordsByCountry, Record]   
+```scala
+     |   def store(
+     |     countryCode: String,
+     |     region: String,
+     |     record: Record
+     |   ): InsertQuery.Default[RecordsByCountry, Record]   
 ```
 
 The new table definition to store the above is:
@@ -306,6 +338,7 @@ The new table definition to store the above is:
 ```scala
 
 import com.outworkers.phantom.dsl._
+import com.outworkers.phantom.builder.query.InsertQuery
 import scala.concurrent.duration._
 
 case class Record(
@@ -315,16 +348,16 @@ case class Record(
   email: String
 )
 
-abstract class RecordsByCountryAndRegion extends CassandraTable[RecordsByCountryAndRegion, Record] {
-  object countryCode extends StringColumn(this) with PartitionKey
-  object region extends StringColumn(this) with PartitionKey
-  object id extends UUIDColumn(this) with PrimaryKey
-  object name extends StringColumn(this)
-  object firstName extends StringColumn(this)
-  object email extends StringColumn(this)
+abstract class RecordsByCountryAndRegion extends Table[RecordsByCountryAndRegion, Record] {
+  object countryCode extends StringColumn with PartitionKey
+  object region extends StringColumn with PartitionKey
+  object id extends UUIDColumn with PrimaryKey
+  object name extends StringColumn
+  object firstName extends StringColumn
+  object email extends StringColumn
 
   // Phantom now auto-generates the below method
-  def store(countryCode: String, region: String, record: Record): InsertQuery.Default[MyTable, Record] = {
+  def store(countryCode: String, region: String, record: Record): InsertQuery.Default[RecordsByCountryAndRegion, Record] = {
     insert
       .value(_.countryCode, countryCode)
       .value(_.region, region)

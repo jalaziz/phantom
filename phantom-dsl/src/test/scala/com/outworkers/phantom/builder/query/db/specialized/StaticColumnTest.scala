@@ -18,15 +18,18 @@ package com.outworkers.phantom.builder.query.db.specialized
 import com.datastax.driver.core.utils.UUIDs
 import com.outworkers.phantom.PhantomSuite
 import com.outworkers.phantom.dsl._
-import com.outworkers.phantom.tables.StaticCollectionRecord
+import com.outworkers.phantom.macros.TableHelper
+import com.outworkers.phantom.tables.{StaticCollectionRecord, StaticCollectionTable}
 import com.outworkers.util.samplers._
+
+import scala.concurrent.Future
 
 class StaticColumnTest extends PhantomSuite {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    database.staticTable.insertSchema()
-    database.staticCollectionTable.insertSchema()
+    database.staticTable.createSchema()
+    database.staticCollectionTable.createSchema()
   }
 
   it should "use a static value for a static column" in {
@@ -41,10 +44,8 @@ class StaticColumnTest extends PhantomSuite {
       select <- database.staticTable.select.where(_.id eqs id).and(_.clusteringId eqs id2).one()
     } yield select
 
-    whenReady(chain) {
-      res => {
-        res.value.static shouldEqual static
-      }
+    whenReady(chain) { res =>
+      res.value.static shouldEqual static
     }
   }
 
@@ -66,41 +67,36 @@ class StaticColumnTest extends PhantomSuite {
       select <- database.staticTable.select.where(_.id eqs id).and(_.clusteringId eqs id).one()
     } yield select
 
-    whenReady(chain) {
-      res =>
-        // The first record should hold the updated value.
-        res.value.static shouldEqual static2
+    whenReady(chain) { res =>
+      // The first record should hold the updated value.
+      res.value.static shouldEqual static2
     }
   }
 
   it should "append a value to a static list and share the update among records" in {
     val id = gen[UUID]
 
+    val helper = TableHelper[StaticCollectionTable, StaticCollectionRecord]
+
     val sample = gen[StaticCollectionRecord].copy(id = id)
     val sample2 = gen[StaticCollectionRecord].copy(id = id, list = sample.list)
 
-    val qb = database.staticCollectionTable.update.where(_.id eqs id)
-      .and(_.clusteringId eqs sample.clustering)
-      .modify(_.staticList append "test")
-      .queryString
-
     val chain = for {
-      store1 <- database.staticCollectionTable.store(sample).future()
-      store2 <- database.staticCollectionTable.store(sample2).future()
-      update <- database.staticCollectionTable.update.where(_.id eqs id)
-        .and(_.clusteringId eqs sample.clustering)
+      store1 <- db.staticCollectionTable.store(sample).future()
+      store2 <- db.staticCollectionTable.store(sample2).future()
+      update <- db.staticCollectionTable.update.where(_.id eqs id)
         .modify(_.staticList append "test")
         .future()
 
       rec <- database.staticCollectionTable
         .select
         .where(_.id eqs id)
-        .and(_.clusteringId eqs sample.clustering)
+        .and(_.clustering eqs sample.clustering)
         .one()
     } yield rec
 
-    whenReady(chain) {
-      res => res.value.list shouldEqual sample.list ::: List("test")
+    whenReady(chain) { res =>
+      res.value.list shouldEqual sample.list ::: List("test")
     }
   }
 

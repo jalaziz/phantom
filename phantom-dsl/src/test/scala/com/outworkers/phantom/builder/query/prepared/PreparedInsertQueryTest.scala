@@ -15,10 +15,11 @@
  */
 package com.outworkers.phantom.builder.query.prepared
 
+import com.datastax.driver.core.{BoundStatement, ProtocolVersion}
 import com.outworkers.phantom.PhantomSuite
-import com.outworkers.phantom.codec.JodaLocalDateCodec
+import com.outworkers.phantom.builder.primitives.{DerivedField, DerivedTupleField}
 import com.outworkers.phantom.dsl._
-import com.outworkers.phantom.tables.{Primitive, PrimitiveCassandra22, Recipe}
+import com.outworkers.phantom.tables.{DerivedRecord, PrimitiveCassandra22, PrimitiveRecord, Recipe}
 import com.outworkers.util.samplers._
 
 class PreparedInsertQueryTest extends PhantomSuite {
@@ -26,10 +27,11 @@ class PreparedInsertQueryTest extends PhantomSuite {
   override def beforeAll(): Unit = {
     super.beforeAll()
     System.setProperty("user.timezone", "Canada/Pacific") // perform these tests in non utc timezone
-    database.recipes.insertSchema()
-    database.primitives.insertSchema()
+    database.recipes.createSchema()
+    database.derivedPrimitivesTable.createSchema()
+    database.primitives.createSchema()
     if (session.v4orNewer) {
-      database.primitivesCassandra22.insertSchema()
+      database.primitivesCassandra22.createSchema()
     }
   }
 
@@ -69,7 +71,7 @@ class PreparedInsertQueryTest extends PhantomSuite {
   }
 
   it should "serialize a primitives insert query" in {
-    val sample = gen[Primitive]
+    val sample = gen[PrimitiveRecord]
 
     val query = database.primitives.insert
       .p_value(_.pkey, ?)
@@ -112,7 +114,6 @@ class PreparedInsertQueryTest extends PhantomSuite {
 
   if (session.v4orNewer) {
     it should "serialize a cassandra 2.2 primitives insert query" in {
-      session.getCluster.getConfiguration.getCodecRegistry.register(new JodaLocalDateCodec)
       val sample = gen[PrimitiveCassandra22]
 
       val query = database.primitivesCassandra22.insert
@@ -140,7 +141,7 @@ class PreparedInsertQueryTest extends PhantomSuite {
     }
   }
 
-  it should "excute a prepared insert with a bound TTL variable in the using clause" in {
+  it should "execute a prepared insert with a bound TTL variable in the using clause" in {
     val usedTtl = 10
 
     val sample = gen[Recipe]
@@ -178,8 +179,34 @@ class PreparedInsertQueryTest extends PhantomSuite {
     }
   }
 
+  it should "be able to bind a derived primitive" in {
+    val sample = DerivedRecord(
+      gen[UUID],
+      gen[ShortString].value,
+      gen[DerivedField],
+      gen[DerivedTupleField]
+    )
+
+    val query = database.derivedPrimitivesTable.insert
+      .p_value(_.id, ?)
+      .p_value(_.description, ?)
+      .p_value(_.rec, ?)
+      .p_value(_.complex, ?)
+      .prepare()
+
+    val chain = for {
+      store <- query.bind(sample).future()
+      res <- database.derivedPrimitivesTable.select.where(_.id eqs sample.id).one()
+    } yield res
+
+    whenReady(chain) { res =>
+      res shouldBe defined
+      res.value shouldEqual sample
+    }
+  }
+
   it should "be able to bind a custom Scala BigDecimal" in {
-    val sample = gen[Primitive]
+    val sample = gen[PrimitiveRecord]
 
     val query = database.primitives.insert
       .p_value(_.pkey, ?)

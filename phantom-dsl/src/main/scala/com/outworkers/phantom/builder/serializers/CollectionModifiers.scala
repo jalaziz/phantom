@@ -18,6 +18,7 @@ package com.outworkers.phantom.builder.serializers
 import com.outworkers.phantom.builder.QueryBuilder
 import com.outworkers.phantom.builder.query.engine.CQLQuery
 import com.outworkers.phantom.builder.syntax.CQLSyntax
+import com.outworkers.phantom.builder.primitives.Primitive
 
 private[builder] abstract class CollectionModifiers(queryBuilder: QueryBuilder) extends BaseModifiers {
 
@@ -181,6 +182,12 @@ private[builder] abstract class CollectionModifiers(queryBuilder: QueryBuilder) 
     diamond(CQLSyntax.Collections.map, CQLQuery(List(keyType, valueType)).queryString)
   }
 
+  def mapType[K, V](key: Primitive[K], value: Primitive[V]): CQLQuery = {
+    diamond(CQLSyntax.Collections.map, CQLQuery(
+      List(frozen(key).queryString, frozen(value).queryString)
+    ).queryString)
+  }
+
   def listType(valueType: String): CQLQuery = {
     diamond(CQLSyntax.Collections.list, valueType)
   }
@@ -201,8 +208,45 @@ private[builder] abstract class CollectionModifiers(queryBuilder: QueryBuilder) 
     .append(CQLSyntax.Symbols.`>`)
   }
 
+  def frozen[V](p: Primitive[V]): CQLQuery = frozen(p.dataType, p.shouldFreeze)
+
+  def frozen(cassandraType: String, shouldFreeze: Boolean): CQLQuery = {
+    if (shouldFreeze) {
+      diamond(CQLSyntax.Collections.frozen, cassandraType)
+    } else {
+      CQLQuery(cassandraType)
+    }
+  }
+
   def frozen(cassandraType: String): CQLQuery = {
     diamond(CQLSyntax.Collections.frozen, cassandraType)
+  }
+
+  def collectionType(
+    colType: String,
+    cassandraType: String,
+    shouldFreeze: Boolean,
+    freezeInner: Boolean,
+    static: Boolean
+  ): CQLQuery = {
+    val root = (shouldFreeze, freezeInner) match {
+      case (true, true) =>
+        // frozen<list<frozen<tuple<string, string>>>
+        frozen(diamond(colType, frozen(cassandraType).queryString))
+      case (true, false) =>
+        // frozen<list<string>>
+        frozen(diamond(colType, cassandraType))
+        // list<frozen<tuple<string, string>>
+      case (false, true) => diamond(colType, frozen(cassandraType).queryString)
+        // list<string>
+      case (false, false) => diamond(colType, cassandraType)
+    }
+
+    if (static) {
+      root.pad.append("static")
+    } else {
+      root
+    }
   }
 
   def frozen(cassandraType: CQLQuery): CQLQuery = {

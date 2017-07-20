@@ -24,7 +24,7 @@ class SetOperationsTest extends PhantomSuite {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    database.testTable.insertSchema()
+    database.testTable.createSchema()
   }
 
   it should "append an item to a set column" in {
@@ -32,9 +32,9 @@ class SetOperationsTest extends PhantomSuite {
     val someItem = "test5"
 
     val chain = for {
-      insertDone <- TestDatabase.testTable.store(item).future()
-      update <- TestDatabase.testTable.update.where(_.key eqs item.key).modify(_.setText add someItem).future()
-      db <- TestDatabase.testTable.select(_.setText).where(_.key eqs item.key).one()
+      insertDone <- database.testTable.store(item).future()
+      update <- database.testTable.update.where(_.key eqs item.key).modify(_.setText add someItem).future()
+      db <- database.testTable.select(_.setText).where(_.key eqs item.key).one()
     } yield db
 
     whenReady(chain) { items =>

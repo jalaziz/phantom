@@ -23,10 +23,9 @@ import com.outworkers.phantom.builder.query.{ExecutableQuery, RootSelectBlock}
 import com.outworkers.phantom.connectors.KeySpace
 import com.outworkers.phantom.dsl.{context => _}
 import com.outworkers.phantom.streams.iteratee.{Enumerator, Iteratee => PhantomIteratee}
+import com.outworkers.phantom.streams.lib.EnumeratorPublisher
 import org.reactivestreams.Publisher
 import play.api.libs.iteratee.{Enumeratee, Enumerator => PlayEnumerator}
-import play.api.libs.streams.Streams
-
 import scala.concurrent.ExecutionContextExecutor
 import scala.concurrent.duration.FiniteDuration
 
@@ -47,6 +46,25 @@ import scala.concurrent.duration.FiniteDuration
  */
 package object streams {
 
+  /**
+    * Adapt an Enumerator to a Publisher. Each Subscriber will be
+    * adapted to an Iteratee and applied to the Enumerator. Input of
+    * type Input.El will result in calls to onNext.
+    *
+    * Either onError or onComplete will always be invoked as the
+    * last call to the subscriber, the former happening if the
+    * enumerator fails with an error, the latter happening when
+    * the first of either Input.EOF is fed, or the enumerator
+    * completes.
+    *
+    * If emptyElement is None then Input of type Input.Empty will
+    * be ignored. If it is set to Some(x) then it will call onNext
+    * with the value x.
+    */
+  def enumeratorToPublisher[T](enum: PlayEnumerator[T], emptyElement: Option[T] = None): Publisher[T] = {
+    new EnumeratorPublisher(enum, emptyElement)
+  }
+
   private[this] final val DEFAULT_CONCURRENT_REQUESTS = 5
 
   private[this] final val DEFAULT_BATCH_SIZE = 100
@@ -54,8 +72,9 @@ package object streams {
    * @tparam CT the concrete type inheriting from [[CassandraTable]]
    * @tparam T the type of the streamed element
    */
-  implicit class StreamedCassandraTable[CT <: CassandraTable[CT, T], T](val ct: CassandraTable[CT, T]) extends AnyVal {
-
+  implicit class StreamedCassandraTable[CT <: CassandraTable[CT, T], T](
+    val ct: CassandraTable[CT, T]
+  ) extends AnyVal {
 
     /**
      * Gets a reactive streams [[org.reactivestreams.Subscriber]] with
@@ -122,13 +141,12 @@ package object streams {
       keySpace: KeySpace,
       ctx: ExecutionContextExecutor
     ): Publisher[T] = {
-      Streams.enumeratorToPublisher(ct.select.all().fetchEnumerator())
+      enumeratorToPublisher(ct.select.all().fetchEnumerator())
     }
   }
 
   implicit class PublisherConverter[T](val enumerator: PlayEnumerator[T]) extends AnyVal {
-
-    def publisher: Publisher[T] = Streams.enumeratorToPublisher(enumerator)
+    def publisher: Publisher[T] = enumeratorToPublisher(enumerator)
   }
 
   /**
@@ -181,7 +199,6 @@ package object streams {
     }
   }
 
-  // trait ExecutableQuery[T <: CassandraTable[T, _], R, Limit <: LimitBound]
   implicit class ExecutableQueryStreamsAugmenter[
     T <: CassandraTable[T, _],
     R,

@@ -28,17 +28,17 @@ class UpdateQueryTest extends PhantomSuite with Matchers with Assertions with In
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    database.primitives.insertSchema()
-    database.optionalPrimitives.insertSchema()
-    database.testTable.insertSchema()
+    database.primitives.createSchema()
+    database.optionalPrimitives.createSchema()
+    database.testTable.createSchema()
   }
 
   "Update" should "work fine for primitives columns" in {
     //char is not supported
     //https://github.com/datastax/java-driver/blob/2.0/driver-core/src/main/java/com/datastax/driver/core/DataType.java
-    val row = gen[Primitive]
+    val row = gen[PrimitiveRecord]
 
-    val updatedRow = gen[Primitive].copy(pkey = row.pkey)
+    val updatedRow = gen[PrimitiveRecord].copy(pkey = row.pkey)
 
     val chain = for {
       store <- database.primitives.store(row).future()
@@ -164,7 +164,7 @@ class UpdateQueryTest extends PhantomSuite with Matchers with Assertions with In
       .modify(_.boolean setIfDefined Some(updatedBool))
       .and(_.date setIfDefined None)
 
-    query.setPart.list.size shouldEqual 1
+    query.setPart.queries.size shouldEqual 1
     query.setPart.qb shouldEqual QueryBuilder.Update.set(QueryBuilder.Update.setTo(
       database.optionalPrimitives.boolean.name,
       updatedBool.toString
@@ -197,7 +197,7 @@ class UpdateQueryTest extends PhantomSuite with Matchers with Assertions with In
       .and(_.inet setIfDefined None)
 
 
-    query.setPart.list.size shouldEqual 1
+    query.setPart.queries.size shouldEqual 1
     query.setPart.qb shouldEqual QueryBuilder.Update.set(QueryBuilder.Update.setTo(
       database.optionalPrimitives.boolean.name,
       updatedBool.toString
@@ -220,9 +220,9 @@ class UpdateQueryTest extends PhantomSuite with Matchers with Assertions with In
   }
 
   it should "allow using a timestamp clause with a normal assignments query" in {
-    val row = gen[Primitive]
+    val row = gen[PrimitiveRecord]
 
-    val sample = gen[Primitive].copy(pkey = row.pkey)
+    val sample = gen[PrimitiveRecord].copy(pkey = row.pkey)
     val t1 = DateTime.now(DateTimeZone.UTC)
     val t2 = DateTime.now(DateTimeZone.UTC).plusMinutes(1)
 
@@ -265,9 +265,9 @@ class UpdateQueryTest extends PhantomSuite with Matchers with Assertions with In
   it should "allow using initiating a setIfDefined chain with a None" in {
     //char is not supported
     //https://github.com/datastax/java-driver/blob/2.0/driver-core/src/main/java/com/datastax/driver/core/DataType.java
-    val row = gen[Primitive]
+    val row = gen[PrimitiveRecord]
 
-    val updatedRow = gen[Primitive].copy(pkey = row.pkey)
+    val updatedRow = gen[PrimitiveRecord].copy(pkey = row.pkey)
 
     val chain = for {
       store <- database.primitives.store(row).future()
@@ -296,9 +296,9 @@ class UpdateQueryTest extends PhantomSuite with Matchers with Assertions with In
   it should "allow using setIfDefined on non optional columns" in {
     //char is not supported
     //https://github.com/datastax/java-driver/blob/2.0/driver-core/src/main/java/com/datastax/driver/core/DataType.java
-    val row = gen[Primitive]
+    val row = gen[PrimitiveRecord]
 
-    val updatedRow = gen[Primitive].copy(pkey = row.pkey)
+    val updatedRow = gen[PrimitiveRecord].copy(pkey = row.pkey)
 
     val chain = for {
       store <- database.primitives.store(row).future()

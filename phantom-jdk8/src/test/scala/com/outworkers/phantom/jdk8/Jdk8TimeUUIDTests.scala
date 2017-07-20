@@ -20,7 +20,7 @@ import java.time.{OffsetDateTime, ZonedDateTime}
 import com.datastax.driver.core.utils.UUIDs
 import com.outworkers.phantom.PhantomSuite
 import com.outworkers.phantom.dsl._
-import com.outworkers.phantom.jdk8.dsl._
+import com.outworkers.phantom.jdk8._
 import com.outworkers.phantom.tables.TimeUUIDRecord
 import com.outworkers.util.samplers._
 import org.scalacheck.Gen
@@ -31,7 +31,7 @@ class Jdk8TimeUUIDTests extends PhantomSuite {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    database.timeuuidTable.insertSchema()
+    database.timeuuidTable.createSchema()
   }
 
   it should "be able to store and retrieve a time slice of records based on an OffsetDateTime" in {
@@ -56,8 +56,8 @@ class Jdk8TimeUUIDTests extends PhantomSuite {
       */
     val recordList = record :: Nil
 
-    val minuteOffset = start.plusMinutes(-1).timeuuid()
-    val secondOffset = start.plusSeconds(-15).timeuuid()
+    val minuteOffset = start.plusMinutes(-1).timeuuid
+    val secondOffset = start.plusSeconds(-15).timeuuid
 
     val record1 = TimeUUIDRecord(
       user,
@@ -127,8 +127,8 @@ class Jdk8TimeUUIDTests extends PhantomSuite {
       */
     val recordList = record :: Nil
 
-    val minuteOffset = start.plusMinutes(-1).timeuuid()
-    val secondOffset = start.plusSeconds(-15).timeuuid()
+    val minuteOffset = start.plusMinutes(-1).timeuuid
+    val secondOffset = start.plusSeconds(-15).timeuuid
 
     val record1 = TimeUUIDRecord(
       user,
@@ -192,7 +192,7 @@ class Jdk8TimeUUIDTests extends PhantomSuite {
             -intervalOffset,
             intervalOffset
           ).sample.get
-        ).timeuuid())
+        ).timeuuid)
       )
 
     val chain = for {
@@ -225,11 +225,11 @@ class Jdk8TimeUUIDTests extends PhantomSuite {
             -intervalOffset,
             intervalOffset
           ).sample.get
-        ).timeuuid())
+        ).timeuuid)
       )
 
     val chain = for {
-      _ <- Future.sequence(records.map(r => database.timeuuidTable.store(r).future()))
+      _ <- database.timeuuidTable.storeRecords(records)
       get <- database.timeuuidTable.select
         .where(_.user eqs user)
         .and(_.id >= minTimeuuid(start.plusSeconds(-3 * intervalOffset)))

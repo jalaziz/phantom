@@ -22,8 +22,10 @@ import com.outworkers.phantom.builder.primitives.Primitive
 import com.outworkers.phantom.builder.syntax.CQLSyntax
 
 class TimeUUIDColumn[
-  Owner <: CassandraTable[Owner, Record],
-  Record](table: CassandraTable[Owner, Record]
-)(implicit primitive: Primitive[UUID]) extends PrimitiveColumn[Owner, Record, UUID](table) {
+  T <: CassandraTable[T, R],
+  R
+](table: CassandraTable[T, R])(
+  implicit ev: Primitive[UUID]
+) extends PrimitiveColumn[T, R, UUID](table) {
   override val cassandraType = CQLSyntax.Types.TimeUUID
 }

@@ -19,6 +19,7 @@ the entries would override each other in Cassandra, because in effect they would
 and the same clustering key, so the whole primary key would be identical.
 
 ```scala
+
 import com.outworkers.phantom.dsl._
 
 case class CarMetric(
@@ -28,11 +29,11 @@ case class CarMetric(
   tirePressure: Double
 )
 
-abstract class AnalyticsEntries extends CassandraTable[AnalyticsEntries, CarMetric] with RootConnector {
-  object car extends UUIDColumn(this) with PartitionKey
-  object id extends TimeUUIDColumn(this) with ClusteringOrder with Descending
-  object velocity extends DoubleColumn(this)
-  object tirePressure extends DoubleColumn(this)
+abstract class AnalyticsEntries extends Table[AnalyticsEntries, CarMetric] {
+  object car extends UUIDColumn with PartitionKey
+  object id extends TimeUUIDColumn with ClusteringOrder with Descending
+  object velocity extends DoubleColumn
+  object tirePressure extends DoubleColumn
 }
 
 ```
@@ -43,13 +44,16 @@ The following is the list of available query methods on a select, and it can be 
  in various ways.
  
  
-| Method name | Return type | Purpose |
-| =========== | =========== | ======= |
-
-
-
-#####
-
+| Method name                   | Return type                         | Purpose                                                |
+| ----------------------------- | ----------------------------------- | -----------------------------------------------------  |
+| `future`                      | `com.ouwotkers.phantom.ResultSet`   | Available on all queries, returns the raw result type. |
+| `one`                         | `Option[R]`                         | Select a single result as an `Option[R]`               |
+| `fetch`                       | `List[R]`                           | Select a small list of records without a paging state  |
+| `fetch(modifier)`             | `List[R]`                           | Select a small list of records without a paging state  |
+| `fetchRecord`                 | `ListResult[R]`                     | Fetch a small result together with the `ResultSet`     |
+| `paginateRecord`              | `ListResult[R]`                     | Fetch a paginated result together with the `ResultSet` and `PagingState` |
+| `paginateRecord(modifier)`    | `ListResult[R]`                     | Fetch a paginated result together with the `ResultSet` and `PagingState` |
+| `paginateRecord(pagingState)` | `ListResult[R]`                     | Fetch a paginated result together with the `ResultSet` and `PagingState` |
 
 
 #### Paginating results by leveraging paging states and automated Cassandra pagination.
@@ -57,3 +61,40 @@ The following is the list of available query methods on a select, and it can be 
 There are situations where you can not retrieve a whole list of results in a single go, and for that reason
 Cassandra offers paging states and automated pagination. Phantom makes that functionality available through a set of overloaded
 methods called `paginateRecord`.
+
+As opposed to a normal `one` or `fetch` query, calling `paginateRecord` will return a `ListResult`, that allows
+you to look inside the original `ResultSet`, as well as the `PagingState`. The state can then be serialized
+to a string, and using that string is the key to pagination from a client.
+
+
+####  Aggregation functions
+
+Cassandra supports a set of native aggregation functions. To explore them in more detail, have a look
+at [this tutorial](http://christopher-batey.blogspot.co.uk/2015/05/cassandra-aggregates-min-max-avg-group.html).
+
+It's important to note aggregation functions rely on `scala.Numeric`. We use this to transparently
+handle multiple numeric types as possible returns. Phantom supports the following aggregation operators.
+
+The `T` below means the return type will depend on the type of the column you call the operator on.
+The average of a `Float` column will come back as `scala.Float` and so on.
+
+
+| Scala operator     | Cassandra operator   | Return type           |
+| --------------     | -------------------- | --------------------- |
+| `sum[T : Numeric]` | SUM                  | `Option[T : Numeric]` |
+| `min[T : Numeric]` | MIN                  | `Option[T : Numeric]` |
+| `max[T : Numeric]` | MAX                  | `Option[T : Numeric]` |
+| `avg[T : Numeric]` | AVG                  | `Option[T : Numeric]` |
+| `count`            | COUNT                | `Option[scala.Long]`  |
+
+To take advantage of these operators, simply use the default import, combined with the `function` argument
+and the `aggregate` function. A few examples are found in [SelectFunctionsTesting.scala](/phantom-dsl/src/test/scala/com/outworkers/phantom/builder/query/db/specialized/SelectFunctionsTesting.scala#L99).
+
+The structure of an aggregation query is simple, and the rturn type is 
+
+```scala
+database.primitives.select.function(t => sum(t.long)).where(_.pkey eqs record.pkey).aggregate()
+database.primitives.select.function(t => min(t.int)).where(_.pkey eqs record.pkey).aggregate()
+database.primitives.select.function(t => avg(t.int)).where(_.pkey eqs record.pkey).aggregate()
+```
+

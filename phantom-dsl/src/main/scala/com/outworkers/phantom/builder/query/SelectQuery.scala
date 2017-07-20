@@ -15,10 +15,11 @@
  */
 package com.outworkers.phantom.builder.query
 
-import com.datastax.driver.core.{ConsistencyLevel, Row, Session}
-import com.outworkers.phantom.CassandraTable
+import com.datastax.driver.core.{ConsistencyLevel, Session}
+import com.outworkers.phantom.{CassandraTable, Row}
 import com.outworkers.phantom.builder.{ConsistencyBound, LimitBound, OrderBound, WhereBound, _}
 import com.outworkers.phantom.builder.clauses._
+import com.outworkers.phantom.builder.primitives.Primitives.{LongPrimitive, StringPrimitive}
 import com.outworkers.phantom.builder.query.engine.CQLQuery
 import com.outworkers.phantom.builder.query.prepared.{PrepareMark, PreparedSelectBlock}
 import com.outworkers.phantom.builder.syntax.CQLSyntax
@@ -28,7 +29,6 @@ import shapeless.{::, =:!=, HList, HNil}
 
 import scala.annotation.implicitNotFound
 import scala.concurrent.{ExecutionContextExecutor, Future => ScalaFuture}
-import scala.util.Try
 
 class SelectQuery[
   Table <: CassandraTable[Table, _],
@@ -129,10 +129,8 @@ class SelectQuery[
     RR,
     HL <: HList,
     Out <: HList
-  ](
-    condition: Table => QueryCondition[HL]
-  )(implicit
-    ev: Chain =:= Unchainned,
+  ](condition: Table => QueryCondition[HL])(
+    implicit ev: Chain =:= Unchainned,
     prepend: Prepend.Aux[HL, PS, Out]
   ): QueryType[Table, Record, Limit, Order, Status, Chainned, Out] = {
     new SelectQuery(
@@ -159,10 +157,8 @@ class SelectQuery[
     RR,
     HL <: HList,
     Out <: HList
-  ](
-    condition: Table => QueryCondition[HL]
-  )(implicit
-    ev: Chain =:= Chainned,
+  ](condition: Table => QueryCondition[HL])(
+    implicit ev: Chain =:= Chainned,
     prepend: Prepend.Aux[HL, PS, Out]
   ): QueryType[Table, Record, Limit, Order, Status, Chainned, Out] = {
     new SelectQuery(
@@ -286,6 +282,36 @@ class SelectQuery[
   }
 
   /**
+    * Returns the first row from the select ignoring everything else
+    * @param session The implicit session provided by a [[com.outworkers.phantom.connectors.Connector]].
+    * @param ev The implicit limit for the query.
+    * @param ec The implicit Scala execution context.
+    * @return A Scala future guaranteed to contain a single result wrapped as an Option.
+    */
+  @implicitNotFound("You have already defined limit on this Query. You cannot specify multiple limits on the same builder.")
+  def aggregate[Inner]()(
+    implicit session: Session,
+    ev: Limit =:= Unlimited,
+    opt: Record <:< Option[Inner],
+    ec: ExecutionContextExecutor
+  ): ScalaFuture[Option[Inner]] = {
+    val enforceLimit = if (count) LimitedPart.empty else limitedPart append QueryBuilder.limit(1.toString)
+
+    new SelectQuery(
+      table = table,
+      rowFunc = rowFunc,
+      init = init,
+      wherePart = wherePart,
+      orderPart = orderPart,
+      limitedPart = enforceLimit,
+      filteringPart = filteringPart,
+      usingPart = usingPart,
+      count = count,
+      options = options
+    ).optionalFetch()
+  }
+
+  /**
    * Returns the first row from the select ignoring everything else
    * @param session The implicit session provided by a [[com.outworkers.phantom.connectors.Connector]].
    * @param ev The implicit limit for the query.
@@ -312,7 +338,6 @@ class SelectQuery[
       count = count,
       options = options
     ).singleFetch()
-
   }
 }
 
@@ -347,30 +372,48 @@ private[phantom] class RootSelectBlock[
   }
 
   private[this] def extractCount(r: Row): Long = {
-    Try(r.getLong(CQLSyntax.Selection.count)).getOrElse(0L)
+    LongPrimitive.fromRow(CQLSyntax.Selection.count, r).getOrElse(0L)
   }
 
   def json()(implicit keySpace: KeySpace): SelectQuery.Default[T, String] = {
     val jsonParser: (Row) => String = row => {
-      row.getString(CQLSyntax.JSON_EXTRACTOR)
+      StringPrimitive.deserialize(
+        row.getBytesUnsafe(CQLSyntax.JSON_EXTRACTOR),
+        row.version
+      )
     }
 
     clause match {
-      case Some(_) => {
+      case Some(_) =>
         new SelectQuery(
           table,
           jsonParser,
           QueryBuilder.Select.selectJson(table.tableName, keySpace.name)
         )
-      }
-      case None => {
+
+      case None =>
         new SelectQuery(
           table,
           jsonParser,
           QueryBuilder.Select.selectJson(table.tableName, keySpace.name, columns: _*)
         )
-      }
     }
+  }
+
+  def function[RR](f1: TypedClause.Condition[RR])(
+    implicit keySpace: KeySpace
+  ): SelectQuery.Default[T, RR] = {
+    new SelectQuery(
+      table,
+      f1.extractor,
+      QueryBuilder.Select.select(table.tableName, keySpace.name, f1.qb),
+      WherePart.empty,
+      OrderPart.empty,
+      LimitedPart.empty,
+      FilteringPart.empty,
+      UsingPart.empty,
+      count = false
+    )
   }
 
   def function[RR](f1: T => TypedClause.Condition[RR])(
@@ -427,7 +470,7 @@ private[phantom] trait SelectImplicits {
   final implicit def rootSelectBlockToSelectQuery[
     T <: CassandraTable[T, _],
     R
-  ]( root: RootSelectBlock[T, R])(implicit keySpace: KeySpace): SelectQuery.Default[T, R] = {
+  ](root: RootSelectBlock[T, R])(implicit keySpace: KeySpace): SelectQuery.Default[T, R] = {
     root.all
   }
 }

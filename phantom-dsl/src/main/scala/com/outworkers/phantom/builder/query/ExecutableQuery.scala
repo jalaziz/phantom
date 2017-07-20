@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 package com.outworkers.phantom.builder.query
-
 import java.util.{Iterator => JavaIterator, List => JavaList}
 
-import com.datastax.driver.core._
-import com.outworkers.phantom.CassandraTable
+import com.datastax.driver.core.{ResultSet => _, Row => _, _}
+import com.outworkers.phantom.{CassandraTable, Row}
 import com.outworkers.phantom.builder.query.engine.CQLQuery
 import com.outworkers.phantom.builder.{LimitBound, Unlimited}
-import com.outworkers.phantom.connectors.KeySpace
+import com.outworkers.phantom.ResultSet
 
 import scala.collection.JavaConverters._
 import scala.collection.generic.CanBuildFrom
@@ -32,6 +31,8 @@ trait RecordResult[R] {
   def result: ResultSet
 
   def pagingState: PagingState = result.getExecutionInfo.getPagingState
+
+  def state: Option[PagingState] = Option(result.getExecutionInfo.getPagingState)
 }
 
 case class ListResult[R](records: List[R], result: ResultSet) extends RecordResult[R]
@@ -78,7 +79,7 @@ trait ExecutableStatement extends CassandraOperations {
     implicit session: Session,
     ec: ExecutionContextExecutor
   ): ScalaFuture[ResultSet] = {
-    scalaQueryStringExecuteToFuture(statement)
+    statementToFuture(statement)
   }
 
   /**
@@ -100,39 +101,74 @@ trait ExecutableStatement extends CassandraOperations {
     implicit session: Session,
     executor: ExecutionContextExecutor
   ): ScalaFuture[ResultSet] = {
-    scalaQueryStringExecuteToFuture(modifyStatement(statement))
+    statementToFuture(modifyStatement(statement))
   }
 }
 
-class ExecutableStatementList(val queries: Seq[CQLQuery]) extends CassandraOperations {
+private[this] object SequentialFutures {
+  def sequencedTraverse[
+    A,
+    B,
+    M[X] <: TraversableOnce[X]
+  ](in: M[A])(fn: A => ScalaFuture[B])(implicit
+    executor: ExecutionContextExecutor,
+    cbf: CanBuildFrom[M[A], B, M[B]]
+  ): ScalaFuture[M[B]] = {
+    in.foldLeft(ScalaFuture.successful(cbf(in))) { (fr, a) =>
+      for (r <- fr; b <- fn(a)) yield r += b
+    }.map(_.result())
+  }
+}
 
-  /**
-   * Secondary constructor to allow passing in Sets instead of Sequences.
-   * Although this may appear to be fruitless and uninteresting it a necessary evil.
-   *
-   * The TwitterFuture.collect method does not support passing in arbitrary collections using the Scala API
-   * just as Scala.future does. Scala Futures can sequence over traversables and return a collection of the appropiate type.
-   *
-   * @param queries The list of CQL queries to execute.
-   * @return An instance of an ExecutableStatement with the matching sequence of CQL queries.
-   */
-  def this(queries: Set[CQLQuery]) = this(queries.toSeq)
+class ExecutableStatementList[
+  M[X] <: TraversableOnce[X]
+](val queries: M[CQLQuery])(
+  implicit cbf: CanBuildFrom[M[CQLQuery], CQLQuery, M[CQLQuery]]
+) extends CassandraOperations {
 
-  def add(appendable: Seq[CQLQuery]): ExecutableStatementList = {
-    new ExecutableStatementList(queries ++ appendable)
+  def isEmpty: Boolean = queries.isEmpty
+
+  def add(appendable: M[CQLQuery]): ExecutableStatementList[M] = {
+    val builder = cbf(queries)
+    for (q <- appendable) builder += q
+    new ExecutableStatementList(builder.result())
   }
 
-  def ++(appendable: Seq[CQLQuery]): ExecutableStatementList = add(appendable)
+  def ++(appendable: M[CQLQuery]): ExecutableStatementList[M] = add(appendable)
 
-  def ++(st: ExecutableStatementList): ExecutableStatementList = add(st.queries)
+  def ++(st: ExecutableStatementList[M]): ExecutableStatementList[M] = add(st.queries)
+
+  /** Transforms a `TraversableOnce[A]` into a `Future[TraversableOnce[B]]` using the provided function `A => Future[B]`.
+    *  This is useful for performing a parallel map. For example, to apply a function to all items of a list
+    *  in parallel:
+    *
+    *  {{{
+    *    val myFutureList = Future.traverse(myList)(x => Future(myFunc(x)))
+    *  }}}
+    */
 
   def future()(
     implicit session: Session,
-    ec: ExecutionContextExecutor
-  ): ScalaFuture[Seq[ResultSet]] = {
-    ScalaFuture.sequence(queries.map(item => {
-      scalaQueryStringExecuteToFuture(new SimpleStatement(item.terminate.queryString))
-    }))
+    ec: ExecutionContextExecutor,
+    fbf: CanBuildFrom[Nothing, ScalaFuture[ResultSet], M[ScalaFuture[ResultSet]]],
+    ebf: CanBuildFrom[M[ScalaFuture[ResultSet]], ResultSet, M[ResultSet]]
+  ): ScalaFuture[M[ResultSet]] = {
+
+    val builder = fbf()
+
+    for (q <- queries) builder += statementToFuture(new SimpleStatement(q.terminate.queryString))
+
+    ScalaFuture.sequence(builder.result())(ebf, ec)
+  }
+
+  def sequentialFuture()(
+    implicit session: Session,
+    ec: ExecutionContextExecutor,
+    cbf: CanBuildFrom[M[CQLQuery], ResultSet, M[ResultSet]]
+  ): ScalaFuture[M[ResultSet]] = {
+    SequentialFutures.sequencedTraverse(queries) {
+      q => statementToFuture(new SimpleStatement(q.terminate.queryString))
+    }
   }
 }
 
@@ -140,30 +176,19 @@ private[phantom] trait RootExecutableQuery[R] {
 
   def fromRow(r: Row): R
 
-  protected[this] def singleResult(row: Row): Option[R] = {
-    if (Option(row).isDefined) Some(fromRow(row)) else None
+  protected[this] def singleResult(row: Option[Row]): Option[R] = {
+    row map fromRow
   }
 
-  protected[this] def directMapper(results: JavaList[Row])(implicit cbf: CanBuildFrom[Nothing, R, List[R]]): List[R] = {
-
-    val builder = cbf()
-    val resultSize = results.size()
-
-    builder.sizeHint(resultSize)
-
-    var i = 0
-
-    while (i < resultSize) {
-      builder += fromRow(results.get(i))
-      i += 1
-    }
-
-    builder.result()
+  protected[this] def flattenedOption[Inner](
+    row: Option[Row]
+  )(implicit ev: R <:< Option[Inner]): Option[Inner] = {
+    row flatMap fromRow
   }
 
-  protected[this] def directMapper(results: JavaIterator[Row]): List[R] = {
-    results.asScala.map(fromRow).toList
-  }
+  protected[this] def directMapper(
+    results: Iterator[Row]
+  ): List[R] = results.map(fromRow).toList
 }
 
 /**
@@ -181,22 +206,40 @@ trait ExecutableQuery[T <: CassandraTable[T, _], R, Limit <: LimitBound]
   protected[this] def greedyEval(
     f: ScalaFuture[ResultSet]
   )(implicit ex: ExecutionContextExecutor): ScalaFuture[ListResult[R]] = {
-    f map { r => ListResult(directMapper(r.iterator()), r) }
+    f map { r => ListResult(directMapper(r.iterate()), r) }
   }
 
   protected[this] def lazyEval(
     f: ScalaFuture[ResultSet]
   )(implicit ex: ExecutionContextExecutor): ScalaFuture[IteratorResult[R]] = {
-    f map { r => IteratorResult(r.iterator().asScala.map(fromRow), r) }
+    f map { r => IteratorResult(r.iterate().map(fromRow), r) }
+  }
+
+  private[phantom] def optionalFetch[Inner]()(
+    implicit session: Session,
+    ec: ExecutionContextExecutor,
+    ev: R <:< Option[Inner]
+  ): ScalaFuture[Option[Inner]] = {
+    future() map { res => flattenedOption(res.value()) }
   }
 
   private[phantom] def singleFetch()(
     implicit session: Session,
     ec: ExecutionContextExecutor
   ): ScalaFuture[Option[R]] = {
-    future() map { res => singleResult(res.one) }
+    future() map { res => singleResult(res.value()) }
   }
 
+  /**
+    * Paginates a [[ResultSet]] by manually parsing [[Row]] into the Record type [[R]]
+    * by applying the [[fromRow]] method up to [[com.datastax.driver.core.ResultSet#getAvailableWithoutFetching]].
+    * This ensures we do not map more records that already retrieved from the database, thereby honouring the
+    * fetch size set on the underlying query.
+    * @param res The underlying [[ResultSet]] used.
+    * @param cbf The [[CanBuildFrom]] instance used to build the final collection.
+    * @tparam M The higher kinded type used to abstract over the implementation of the resulting collection.
+    * @return A tuple of the mapped collection and the original [[ResultSet]].
+    */
   private[phantom] def pagination[M[X] <: TraversableOnce[X]](res: ResultSet)(
     implicit cbf: CanBuildFrom[Nothing, R, M[R]]
   ): (M[R], ResultSet) = {
@@ -205,7 +248,7 @@ trait ExecutableQuery[T <: CassandraTable[T, _], R, Limit <: LimitBound]
     builder.sizeHint(count)
     var i = 0
     while (i < count) {
-      builder += fromRow(res.one())
+      builder += fromRow(res.value().get)
       i += 1
     }
     builder.result() -> res
@@ -244,7 +287,7 @@ trait ExecutableQuery[T <: CassandraTable[T, _], R, Limit <: LimitBound]
     implicit session: Session,
     ec: ExecutionContextExecutor
   ): ScalaFuture[List[R]] = {
-    future() map { r => directMapper(r.all) }
+    future() map (_.allRows().map(fromRow))
   }
 
   /**
@@ -255,11 +298,11 @@ trait ExecutableQuery[T <: CassandraTable[T, _], R, Limit <: LimitBound]
     * @param ec The implicit Scala execution context.
     * @return A Scala future wrapping a list of mapped results.
     */
-  def fetch(modifyStatement : Modifier)(
+  def fetch(modifyStatement: Modifier)(
     implicit session: Session,
     ec: ExecutionContextExecutor
   ): ScalaFuture[List[R]] = {
-    future(modifyStatement) map { r => directMapper(r.all) }
+    future(modifyStatement) map (_.allRows().map(fromRow))
   }
 
   /**
@@ -277,7 +320,7 @@ trait ExecutableQuery[T <: CassandraTable[T, _], R, Limit <: LimitBound]
     implicit session: Session,
     ec: ExecutionContextExecutor
   ): ScalaFuture[ListResult[R]] = {
-    future() map (r => ListResult(directMapper(r.all), r))
+    future() map (r => ListResult(r.allRows().map(fromRow), r))
   }
 
   /**
@@ -293,7 +336,7 @@ trait ExecutableQuery[T <: CassandraTable[T, _], R, Limit <: LimitBound]
     ec: ExecutionContextExecutor
   ): ScalaFuture[ListResult[R]] = {
     future(modifyStatement) map {
-      set => ListResult(directMapper(set.all), set)
+      set => ListResult(set.allRows().map(fromRow), set)
     }
   }
 
@@ -378,7 +421,7 @@ trait ExecutableQuery[T <: CassandraTable[T, _], R, Limit <: LimitBound]
     implicit session: Session,
     ec: ExecutionContextExecutor
   ): ScalaFuture[IteratorResult[R]] = {
-    future() map { res => IteratorResult(res.iterator().asScala.map(fromRow), res) }
+    future() map { res => IteratorResult(res.iterate().map(fromRow), res) }
   }
 
   /**
@@ -394,7 +437,7 @@ trait ExecutableQuery[T <: CassandraTable[T, _], R, Limit <: LimitBound]
     implicit session: Session,
     ec: ExecutionContextExecutor
   ): ScalaFuture[IteratorResult[R]] = {
-    future(modifier) map (r => IteratorResult(r.iterator().asScala.map(fromRow), r))
+    future(modifier) map (r => IteratorResult(r.iterate().map(fromRow), r))
   }
 
   /**

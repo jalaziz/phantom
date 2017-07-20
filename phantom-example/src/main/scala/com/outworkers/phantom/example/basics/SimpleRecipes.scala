@@ -17,8 +17,12 @@ package com.outworkers.phantom.example.basics
 
 import java.util.UUID
 
+import com.outworkers.phantom.builder.query.InsertQuery
+import com.outworkers.phantom.builder.query.engine.CQLQuery
+
 import scala.concurrent.{Future => ScalaFuture}
 import com.outworkers.phantom.dsl._
+import shapeless.Nat
 
 /**
  * In this example we will create a simple table storing recipes.
@@ -43,27 +47,27 @@ case class Recipe(
 // You can seal the class and only allow importing the companion object.
 // The companion object is where you would implement your custom methods.
 // Keep reading for examples.
-abstract class Recipes extends CassandraTable[Recipes, Recipe] with RootConnector {
+abstract class Recipes extends Table[Recipes, Recipe] {
 
-  object id extends  UUIDColumn(this) with PartitionKey {
+  object id extends  UUIDColumn with PartitionKey {
     // You can override the name of your key to whatever you like.
     // The default will be the name used for the object, in this case "id".
     override lazy val name = "the_primary_key"
   }
 
   // Now we define a column for each field in our case class.
-  object name extends StringColumn(this)
-  object title extends StringColumn(this)
-  object author extends StringColumn(this)
-  object description extends StringColumn(this)
+  object name extends StringColumn
+  object title extends StringColumn
+  object author extends StringColumn
+  object description extends StringColumn
 
   // Custom data types can be stored easily.
   // Cassandra collections target a small number of items, but usage is trivial.
-  object ingredients extends SetColumn[String](this)
+  object ingredients extends SetColumn[String]
 
-  object props extends MapColumn[String, String](this)
+  object props extends MapColumn[String, String]
 
-  object timestamp extends DateTimeColumn(this)
+  object timestamp extends DateTimeColumn
 
   // you can even rename the table in the schema to whatever you like.
   override lazy val tableName = "my_custom_table"
@@ -92,7 +96,7 @@ abstract class Recipes extends CassandraTable[Recipes, Recipe] with RootConnecto
   // The fetch method will collect an asynchronous lazy iterator into a Seq.
   // It's a good way to avoid boilerplate when retrieving a small number of items.
   def findRecipesPage(start: UUID, limit: Int): ScalaFuture[ListResult[Recipe]] = {
-    select.where(_.id gtToken start).limit(limit).paginateRecord(_.setFetchSize(50))
+    select.where(_.id gtToken start).limit(limit).paginateRecord(_.setFetchSize(limit))
   }
 
   // Updating records is also really easy.

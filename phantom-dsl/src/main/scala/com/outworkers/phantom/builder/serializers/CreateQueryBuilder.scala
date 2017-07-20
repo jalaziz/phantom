@@ -21,6 +21,8 @@ import com.outworkers.phantom.builder.query.engine.CQLQuery
 import com.outworkers.phantom.builder.syntax.CQLSyntax
 import com.outworkers.phantom.connectors.KeySpace
 
+import scala.util.Try
+
 sealed trait CreateOptionsBuilder {
   protected[this] def quotedValue(qb: CQLQuery, option: String, value: String): CQLQuery = {
     if (qb.nonEmpty) {
@@ -54,7 +56,15 @@ sealed trait CachingQueryBuilder extends CreateOptionsBuilder {
   }
 
   def rowsPerPartition(qb: CQLQuery, value: String): CQLQuery = {
-    quotedValue(qb, CQLSyntax.RowsPerPartition, value)
+    if (Try(value.toInt).isSuccess) {
+      simpleValue(qb, CQLSyntax.RowsPerPartition, value.toString)
+    } else {
+      quotedValue(qb, CQLSyntax.RowsPerPartition, value)
+    }
+  }
+
+  def rowsPerPartition(qb: CQLQuery, value: Int): CQLQuery = {
+    simpleValue(qb, CQLSyntax.RowsPerPartition, value.toString)
   }
 }
 
@@ -186,7 +196,11 @@ private[builder] class CreateTableBuilder {
   }
 
   def `with`(clause: CQLQuery): CQLQuery = {
-    CQLQuery(CQLSyntax.With).pad.append(clause)
+    if (clause.nonEmpty) {
+      CQLQuery(CQLSyntax.With).forcePad.append(clause)
+    } else {
+      CQLQuery.empty
+    }
   }
 
   /**
@@ -251,6 +265,36 @@ private[builder] class CreateTableBuilder {
     }
 
     CQLQuery(CQLSyntax.CreateOptions.clustering_order).wrap(list)
+  }
+
+  def sasiIndexName(tableName: String, columnName: String): CQLQuery = {
+    CQLQuery(tableName)
+      .append(CQLSyntax.Symbols.underscsore)
+      .append(columnName)
+      .append(CQLSyntax.Symbols.underscsore)
+      .append(CQLSyntax.SASI.suffix)
+  }
+
+  def createSASIIndex(
+    keySpace: KeySpace,
+    tableName: String,
+    indexName: CQLQuery,
+    columnName: String,
+    options: CQLQuery
+  ): CQLQuery = {
+    CQLQuery(CQLSyntax.create)
+      .forcePad.append(CQLSyntax.custom)
+      .forcePad.append(CQLSyntax.index)
+      .forcePad.append(CQLSyntax.ifNotExists)
+      .forcePad.append(indexName)
+      .forcePad.append(CQLSyntax.On)
+      .forcePad.append(keySpace.name)
+      .append(CQLSyntax.Symbols.dot)
+      .append(tableName)
+      .wrapn(columnName)
+      .forcePad.append(CQLSyntax.using)
+      .forcePad.append(CQLQuery.escape(CQLSyntax.SASI.indexClass))
+      .forcePad.append(`with`(options))
   }
 
   def defaultCreateQuery(

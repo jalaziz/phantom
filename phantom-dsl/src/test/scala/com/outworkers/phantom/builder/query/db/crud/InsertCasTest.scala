@@ -25,14 +25,13 @@ class InsertCasTest extends PhantomSuite {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    database.primitives.insertSchema()
-    database.primitives.truncate().future().block(defaultScalaTimeout)
-    database.testTable.insertSchema()
-    database.recipes.insertSchema()
+    database.primitives.createSchema()
+    database.testTable.createSchema()
+    database.recipes.createSchema()
   }
 
   "Standard inserts" should "not create multiple database entries and perform upserts instead" in {
-    val row = gen[Primitive]
+    val row = gen[PrimitiveRecord]
 
     val insertion = new ExecutableStatementList(
       List(
@@ -65,7 +64,7 @@ class InsertCasTest extends PhantomSuite {
 
 
   "Conditional inserts" should "not create duplicate database entries" in {
-    val row = gen[Primitive]
+    val row = gen[PrimitiveRecord]
 
     val insertion = new ExecutableStatementList(
       List(

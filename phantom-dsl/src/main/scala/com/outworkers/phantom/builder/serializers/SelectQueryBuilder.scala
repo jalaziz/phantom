@@ -50,8 +50,8 @@ sealed class OrderingModifier {
    * @param clauses A sequence of ordering clauses to include in the query.
    * @return A final ORDER BY clause, with all the relevant query parts appended.
    */
-  def orderBy(clauses: CQLQuery*): CQLQuery = clauses match {
-    case head :: tail if tail.isEmpty =>
+  def orderBy(clauses: Seq[CQLQuery]): CQLQuery = clauses match {
+    case Seq(head) =>
       CQLQuery(CQLSyntax.Selection.OrderBy).forcePad.append(head.queryString)
     case _ =>
       CQLQuery(CQLSyntax.Selection.OrderBy).forcePad.append(clauses.map(_.queryString))
@@ -241,6 +241,10 @@ private[builder] class SelectQueryBuilder {
    */
   def dateOf(column: String): CQLQuery = {
     CQLQuery(CQLSyntax.Selection.DateOf).wrapn(column)
+  }
+
+  def aggregation(operator: String, column: String): CQLQuery = {
+    CQLQuery(operator).wrapn(column)
   }
 
   def ttl(column: String): CQLQuery = {

@@ -15,48 +15,32 @@
  */
 package com.outworkers.phantom.builder.query
 
-import com.datastax.driver.core._
-import com.google.common.util.concurrent.{FutureCallback, Futures}
-import com.outworkers.phantom.Manager
-import com.outworkers.phantom.connectors.{KeySpace, SessionAugmenterImplicits}
+import com.datastax.driver.core.{PreparedStatement, Session, Statement, ResultSet => DatastaxResultSet}
+import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture}
+import com.outworkers.phantom.batch.BatchWithQuery
+import com.outworkers.phantom.{Manager, ResultSet}
+import com.outworkers.phantom.connectors.SessionAugmenterImplicits
 
 import scala.concurrent.{ExecutionContextExecutor, Future => ScalaFuture, Promise => ScalaPromise}
 
 private[phantom] trait CassandraOperations extends SessionAugmenterImplicits {
 
-  protected[this] def scalaQueryStringExecuteToFuture(st: Statement)(
+  protected[this] def statementToFuture(st: Statement)(
     implicit session: Session,
     executor: ExecutionContextExecutor
   ): ScalaFuture[ResultSet] = {
-    scalaQueryStringToPromise(st).future
+    statementToPromise(st).future
   }
 
-  protected[this] def preparedStatementToPromise(st: String)(
+  protected[this] def batchToPromise(batch: BatchWithQuery)(
     implicit session: Session,
     executor: ExecutionContextExecutor
-  ): ScalaPromise[PreparedStatement] = {
-    Manager.logger.debug(s"Executing prepared statement: ${st.toString}")
-
-    val promise = ScalaPromise[PreparedStatement]()
-
-    val future = session.prepareAsync(st)
-
-    val callback = new FutureCallback[PreparedStatement] {
-      def onSuccess(result: PreparedStatement): Unit = {
-        promise success result
-      }
-
-      def onFailure(err: Throwable): Unit = {
-        Manager.logger.error(err.getMessage)
-        promise failure err
-      }
-    }
-
-    Futures.addCallback(future, callback, executor)
-    promise
+  ): ScalaPromise[ResultSet] = {
+    Manager.logger.debug(s"Executing query: ${batch.debugString}")
+    statementToPromise(batch.statement)
   }
 
-  protected[this] def scalaQueryStringToPromise(st: Statement)(
+  protected[this] def statementToPromise(st: Statement)(
     implicit session: Session,
     executor: ExecutionContextExecutor
   ): ScalaPromise[ResultSet] = {
@@ -66,9 +50,9 @@ private[phantom] trait CassandraOperations extends SessionAugmenterImplicits {
 
     val future = session.executeAsync(st)
 
-    val callback = new FutureCallback[ResultSet] {
-      def onSuccess(result: ResultSet): Unit = {
-        promise success result
+    val callback = new FutureCallback[DatastaxResultSet] {
+      def onSuccess(result: DatastaxResultSet): Unit = {
+        promise success ResultSet(result, session.protocolVersion)
       }
 
       def onFailure(err: Throwable): Unit = {

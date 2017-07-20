@@ -15,17 +15,23 @@
  */
 package com.outworkers.phantom
 
-import com.datastax.driver.core.{Row, Session}
+import com.datastax.driver.core.Session
+import com.outworkers.phantom.builder.QueryBuilder
 import com.outworkers.phantom.builder.clauses.DeleteClause
 import com.outworkers.phantom.builder.primitives.Primitive
+import com.outworkers.phantom.builder.query.sasi.{Analyzer, Mode}
 import com.outworkers.phantom.builder.query.{RootCreateQuery, _}
-import com.outworkers.phantom.column.AbstractColumn
+import com.outworkers.phantom.builder.syntax.CQLSyntax
+import com.outworkers.phantom.column.{AbstractColumn, CollectionColumn}
 import com.outworkers.phantom.connectors.KeySpace
-import com.outworkers.phantom.macros.TableHelper
+import com.outworkers.phantom.keys.SASIIndex
+import com.outworkers.phantom.macros.{==:==, SingleGeneric, TableHelper}
 import org.slf4j.{Logger, LoggerFactory}
+import shapeless.{Generic, HList}
 
+import scala.collection.generic.CanBuildFrom
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContextExecutor}
+import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 
 /**
  * Main representation of a Cassandra table.
@@ -35,6 +41,25 @@ import scala.concurrent.{Await, ExecutionContextExecutor}
 abstract class CassandraTable[T <: CassandraTable[T, R], R](
   implicit val helper: TableHelper[T, R]
 ) extends SelectTable[T, R] { self =>
+
+  @deprecated("Use Table instead of CassandraTable, and skip passing in the 'this' argument", "2.9.1")
+  class ListColumn[RR](t: CassandraTable[T, R])(
+    implicit ev: Primitive[RR],
+    ev2: Primitive[List[RR]]
+  ) extends CollectionColumn[T, R, List, RR](t, CQLSyntax.Collections.list)
+
+  @deprecated("Use Table instead of CassandraTable, and skip passing in the 'this' argument", "2.9.1")
+  class SetColumn[RR](t: CassandraTable[T, R])(
+    implicit ev: Primitive[RR],
+    ev2: Primitive[Set[RR]]
+  ) extends CollectionColumn[T, R, Set, RR](t, CQLSyntax.Collections.set)
+
+  @deprecated("Use Table instead of CassandraTable, and skip passing in the 'this' argument", "2.9.1")
+  class MapColumn[KK, VV](t: CassandraTable[T, R])(
+    implicit ev: Primitive[KK],
+    ev2: Primitive[VV],
+    ev3: Primitive[Map[KK, VV]]
+  ) extends com.outworkers.phantom.column.MapColumn[T, R, KK, VV](t)
 
   def columns: Seq[AbstractColumn[_]] = helper.fields(instance)
 
@@ -48,36 +73,15 @@ abstract class CassandraTable[T <: CassandraTable[T, R], R](
 
   def tableKey: String = helper.tableKey(instance)
 
-  @deprecated("Method replaced with macro implementation", "2.0.0")
-  def defineTableKey(): String = tableKey
-
   def instance: T = self.asInstanceOf[T]
 
   lazy val logger: Logger = LoggerFactory.getLogger(getClass.getName.stripSuffix("$"))
 
-  type ListColumn[RR] = com.outworkers.phantom.column.ListColumn[T, R, RR]
-  type SetColumn[RR] =  com.outworkers.phantom.column.SetColumn[T, R, RR]
-  type MapColumn[KK, VV] =  com.outworkers.phantom.column.MapColumn[T, R, KK, VV]
-  type JsonColumn[RR] = com.outworkers.phantom.column.JsonColumn[T, R, RR]
-  type OptionalJsonColumn[RR] = com.outworkers.phantom.column.OptionalJsonColumn[T, R, RR]
-  type EnumColumn[RR <: Enumeration#Value] = com.outworkers.phantom.column.PrimitiveColumn[T, R, RR]
-  type OptionalEnumColumn[RR <: Enumeration#Value] = com.outworkers.phantom.column.OptionalPrimitiveColumn[T, R, RR]
-  type JsonSetColumn[RR] = com.outworkers.phantom.column.JsonSetColumn[T, R, RR]
-  type JsonListColumn[RR] = com.outworkers.phantom.column.JsonListColumn[T, R, RR]
-  type JsonMapColumn[KK,VV] = com.outworkers.phantom.column.JsonMapColumn[T, R, KK, VV]
-  type PrimitiveColumn[RR] = com.outworkers.phantom.column.PrimitiveColumn[T, R, RR]
-  type TupleColumn[RR] =  PrimitiveColumn[RR]
-  type CustomColumn[RR] = PrimitiveColumn[RR]
-  type Col[RR] = PrimitiveColumn[RR]
-  type OptionalCol[RR] = Col[Option[RR]]
-
-  def insertSchema()(
+  def createSchema()(
     implicit session: Session,
     keySpace: KeySpace,
     ec: ExecutionContextExecutor
-  ): Unit = {
-    Await.result(autocreate(keySpace).future(), 10.seconds)
-  }
+  ): ResultSet = Await.result(autocreate(keySpace).future(), 10.seconds)
 
   def tableName: String = helper.tableName
 
@@ -97,7 +101,9 @@ abstract class CassandraTable[T <: CassandraTable[T, R], R](
   final def alter[
     RR,
     NewType
-  ](columnSelect: T => AbstractColumn[RR])(newType: Primitive[NewType])(implicit keySpace: KeySpace): AlterQuery.Default[T, RR] = {
+  ](columnSelect: T => AbstractColumn[RR])(newType: Primitive[NewType])(
+    implicit keySpace: KeySpace
+  ): AlterQuery.Default[T, RR] = {
     AlterQuery.alterType[T, RR, NewType](instance, columnSelect, newType)
   }
 
@@ -112,6 +118,21 @@ abstract class CassandraTable[T <: CassandraTable[T, R], R](
 
   final def insert()(implicit keySpace: KeySpace): InsertQuery.Default[T, R] = InsertQuery(instance)
 
+  def sasiQueries()(implicit keySpace: KeySpace): ExecutableStatementList[Seq] = {
+    val queries = sasiIndexes.map { index =>
+      QueryBuilder.Create.createSASIIndex(
+        keySpace,
+        tableName,
+        QueryBuilder.Create.sasiIndexName(tableName, index.name),
+        index.name,
+        index.analyzer.qb
+      )
+    }
+    new ExecutableStatementList[Seq](queries)
+  }
+
+  def sasiIndexes: Seq[SASIIndex[_ <: Mode]] = helper.sasiIndexes(instance)
+
   /**
     * Automatically generated store method for the record type.
     * @param input The input which will be auto-tupled and compared.
@@ -119,9 +140,36 @@ abstract class CassandraTable[T <: CassandraTable[T, R], R](
     * @tparam V1 The type of the input.
     * @return A default input query.
     */
-  def store[V1](input: V1)(
-    implicit keySpace: KeySpace
-  ): InsertQuery.Default[T, R] = helper.store(instance, input.asInstanceOf[helper.Repr])
+  def store[V1, Repr <: HList, HL, Out <: HList](input: V1)(
+    implicit keySpace: KeySpace,
+    thl: TableHelper.Aux[T, R, Repr],
+    gen: Generic.Aux[V1, HL],
+    sg: SingleGeneric.Aux[V1, Repr, HL, Out],
+    ev: Out ==:== Repr
+  ): InsertQuery.Default[T, R] = thl.store(instance, (sg to input).asInstanceOf[Repr])
+
+  def storeRecord[V1, Repr <: HList, HL <: HList, Out <: HList](input: V1)(
+    implicit keySpace: KeySpace,
+    session: Session,
+    thl: TableHelper.Aux[T, R, Repr],
+    ex: ExecutionContextExecutor,
+    gen: Generic.Aux[V1, HL],
+    sg: SingleGeneric.Aux[V1, Repr, HL, Out],
+    ev: Out ==:== Repr
+  ): Future[ResultSet] = store(input).future()
+
+  def storeRecords[M[X] <: TraversableOnce[X], V1, Repr <: HList, HL <: HList, Out <: HList](inputs: M[V1])(
+    implicit keySpace: KeySpace,
+    session: Session,
+    thl: TableHelper.Aux[T, R, Repr],
+    ex: ExecutionContextExecutor,
+    gen: Generic.Aux[V1, HL],
+    sg: SingleGeneric.Aux[V1, Repr, HL, Out],
+    ev: Out ==:== Repr,
+    cbf: CanBuildFrom[M[V1], ResultSet, M[ResultSet]]
+  ): Future[M[ResultSet]] = {
+    Future.traverse(inputs)(el => storeRecord(el))
+  }
 
   final def delete()(implicit keySpace: KeySpace): DeleteQuery.Default[T, R] = DeleteQuery[T, R](instance)
 

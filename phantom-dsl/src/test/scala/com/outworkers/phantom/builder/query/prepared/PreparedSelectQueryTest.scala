@@ -26,11 +26,11 @@ class PreparedSelectQueryTest extends PhantomSuite {
     super.beforeAll()
     System.setProperty("user.timezone", "Canada/Pacific") // perform these tests in non utc timezone
 
-    database.recipes.insertSchema()
-    database.articlesByAuthor.insertSchema()
-    database.primitives.insertSchema()
+    database.recipes.createSchema()
+    database.articlesByAuthor.createSchema()
+    database.primitives.createSchema()
     if (session.v4orNewer) {
-      database.primitivesCassandra22.insertSchema()
+      database.primitivesCassandra22.createSchema()
     }
   }
 
@@ -123,7 +123,7 @@ class PreparedSelectQueryTest extends PhantomSuite {
   }
 
   it should "serialise and execute a primitives prepared select statement with the correct number of arguments" in {
-    val primitive = gen[Primitive]
+    val primitive = gen[PrimitiveRecord]
 
     val query = database.primitives.select.where(_.pkey eqs ?).prepare()
 

@@ -45,11 +45,11 @@ class RelationalOperatorsTest extends PhantomSuite {
   override def beforeAll(): Unit = {
     super.beforeAll()
 
-    database.timeSeriesTable.insertSchema()
+    database.timeSeriesTable.createSchema()
 
     val chain = for {
       truncate <- database.timeSeriesTable.truncate.future()
-      inserts <- Future.sequence(records map (database.timeSeriesTable.store(_).future))
+      inserts <- database.timeSeriesTable.storeRecords(records)
     } yield inserts
 
     whenReady(chain) { inserts =>
@@ -177,7 +177,7 @@ class RelationalOperatorsTest extends PhantomSuite {
       .allowFiltering()
       .fetch()
 
-    val expected =  records.filter(r => r.timestamp.isAfter(minTimestamp) && r.timestamp.isBefore(maxTimestamp))
+    val expected = records.filter(r => r.timestamp.isAfter(minTimestamp) && r.timestamp.isBefore(maxTimestamp))
     verifyResults(futureResults, expected)
   }
 
@@ -194,7 +194,7 @@ class RelationalOperatorsTest extends PhantomSuite {
       .prepare()
 
     val futureResults = query.bind(minTimestamp, maxTimestamp).fetch()
-    val expected =  records.filter(r => r.timestamp.isAfter(minTimestamp) && r.timestamp.isBefore(maxTimestamp))
+    val expected = records.filter(r => r.timestamp.isAfter(minTimestamp) && r.timestamp.isBefore(maxTimestamp))
     verifyResults(futureResults, expected)
   }
 

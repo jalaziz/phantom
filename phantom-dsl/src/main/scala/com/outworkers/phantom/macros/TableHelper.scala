@@ -15,26 +15,22 @@
  */
 package com.outworkers.phantom.macros
 
-import com.datastax.driver.core.Row
 import com.google.common.base.CaseFormat
-import com.outworkers.phantom.CassandraTable
+import com.outworkers.phantom.{CassandraTable, NamingStrategy, Row}
 import com.outworkers.phantom.builder.query.InsertQuery
+import com.outworkers.phantom.builder.query.sasi.Mode
 import com.outworkers.phantom.column.AbstractColumn
 import com.outworkers.phantom.connectors.KeySpace
-import com.outworkers.phantom.keys.{ClusteringOrder, PartitionKey, PrimaryKey}
+import com.outworkers.phantom.keys.{ClusteringOrder, PartitionKey, PrimaryKey, SASIIndex}
+import com.outworkers.phantom.macros.toolbelt.{BlackboxToolbelt, WhiteboxToolbelt}
+import shapeless.HList
 
 import scala.collection.immutable.ListMap
 import scala.reflect.macros.whitebox
 
-case class Debugger(
-  storeType: String,
-  recordMap: Map[String, String],
-  extractor: String
-)
-
 trait TableHelper[T <: CassandraTable[T, R], R] extends Serializable {
 
-  type Repr
+  type Repr <: HList
 
   def tableName: String
 
@@ -44,16 +40,16 @@ trait TableHelper[T <: CassandraTable[T, R], R] extends Serializable {
 
   def fields(table: T): Seq[AbstractColumn[_]]
 
-  def store(table: T, input: Repr)(implicit space: KeySpace): InsertQuery.Default[T, R]
+  def sasiIndexes(table: T): Seq[SASIIndex[_ <: Mode]]
 
-  def debug: Debugger
+  def store(table: T, input: Repr)(implicit space: KeySpace): InsertQuery.Default[T, R]
 }
 
 object TableHelper {
   implicit def fieldsMacro[
     T <: CassandraTable[T, R],
     R
-  ]: TableHelper[T, R] = macro TableHelperMacro.macroImpl[T, R]
+  ]: TableHelper[T, R] = macro TableHelperMacro.materialize[T, R]
 
   def apply[T <: CassandraTable[T, R], R](implicit ev: TableHelper[T, R]): TableHelper[T, R] = ev
 
@@ -61,7 +57,7 @@ object TableHelper {
 }
 
 @macrocompat.bundle
-class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
+class TableHelperMacro(override val c: whitebox.Context) extends WhiteboxToolbelt with RootMacro {
   import c.universe._
 
   val exclusions: Symbol => Option[Symbol] = s => {
@@ -74,7 +70,31 @@ class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
     }
   }
 
-  def insertQueryType(table: Type, record: Type): Tree = {
+  /**
+    * A set of reserved CQL keywords that should not be used as column names.
+    * They are described here: [[http://docs.datastax.com/en/cql/3.1/cql/cql_reference/keywords_r.html]].
+    */
+  protected[this] val forbiddenNames = Set(
+    TermName("set"),
+    TermName("list"),
+    TermName("map"),
+    TermName("provider")
+  )
+
+  protected[this] val columnNameRegex = "^[a-zA-Z0-9_]*$"
+
+  protected[this] def validateColumnName(termName: TermName): TermName = {
+    if (
+      forbiddenNames.exists(_.toString.toLowerCase == termName.toString.toLowerCase) ||
+      !termName.toString.matches(columnNameRegex)
+    ) {
+      abort(s"Invalid column name $termName, column names cannot be ${forbiddenNames.mkString(", ")} and they have to match $columnNameRegex")
+    } else {
+      termName
+    }
+  }
+
+  protected[this] def insertQueryType(table: Type, record: Type): Tree = {
     tq"com.outworkers.phantom.builder.query.InsertQuery.Default[$table, $record]"
   }
 
@@ -93,10 +113,7 @@ class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
       .map(name => q"$tableTerm.$name")
 
     if (partitionKeys.isEmpty) {
-      c.abort(
-        c.enclosingPosition,
-        s"Table $tableName needs to have at least one partition key"
-      )
+      error(s"Table $tableName needs to have at least one partition key")
     }
 
     val primaries = filterColumns[PrimaryKey](columns)
@@ -129,11 +146,12 @@ class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
     * Predicate that checks two fields refer to the same type.
     * @param left The source, which is a tuple of two [[Record.Field]] values.
     * @param right The source, which is a tuple of two [[Column.Field]] values.
-    * @return True if the left hand side of te tuple is equal to the right hand side
-    *         or if there is an implicit conversion from the left field type to the right field type.
+    * @return True if the left hand side of te tuple is equal to the right hand side.
+    *         Not true even if there is an implicit conversion from the left field type to the right field type,
+    *         we do not currently support the type mapping natively in the macro.
     */
   private[this] def predicate(left: Record.Field, right: Type): Boolean = {
-    (left.tpe =:= right)// || (c.inferImplicitView(EmptyTree, left.tpe, right) != EmptyTree)
+    left.tpe.dealias =:= right.dealias // || (c.inferImplicitView(EmptyTree, left.tpe, right) != EmptyTree)
   }
 
   def variations(term: TermName): List[TermName] = {
@@ -177,7 +195,7 @@ class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
             // In theory this case should not re-occur because we only add elements
             // to the unprocessed if no direct term name matches were found.
             case Some(matchingName) =>
-              logger.warn(s"Found matching column term name for ${recField.debugString} in unprocessed queue.")
+              info(s"Found matching column term name for ${recField.debugString} in unprocessed queue.")
               val m = MatchedField(recField, Column.Field(matchingName, recField.tpe))
               hardMatch(columnFields - (recField.tpe, matchingName), tail, descriptor withMatch m)
 
@@ -199,7 +217,7 @@ class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
                     // Under such circumstances we use the first available column term name
                     // with respect to the write order.
                     val firstName = seq.headOption.getOrElse(
-                      c.abort(c.enclosingPosition, "Found empty term sequence which should never happen!!!")
+                      abort("Found empty term sequence which should never happen!!!")
                     )
 
                     val m = MatchedField(recField, Column.Field(firstName, recField.tpe))
@@ -262,7 +280,7 @@ class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
 
         case Some(seq) => seq.find(recField.name ==) match {
           case Some(matchingName) =>
-            logger.debug(s"Found multiple possible matches for ${recField.debugString}")
+            info(s"Found multiple possible matches for ${recField.debugString}")
             val m = MatchedField(recField, Column.Field(matchingName, recField.tpe))
 
             extractorRec(
@@ -312,10 +330,10 @@ class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
     *     date: DateTime
     *   )
     *
-    *   class MyTable extends CassandraTable[MyTable, MyRecord] {
-    *     object id extends UUIDColumn(this) with PartitionKey
-    *     object email extends StringColumn(this)
-    *     object date extends DateTimeColumn(this)
+    *   class MyTable extends Table[MyTable, MyRecord] {
+    *     object id extends UUIDColumn with PartitionKey
+    *     object email extends StringColumn
+    *     object date extends DateTimeColumn
     *   }
     * }}}
     *
@@ -328,10 +346,10 @@ class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
     *     email: String,
     *   )
     *
-    *   class MyTable extends CassandraTable[MyTable, MyRecord] {
-    *     object id extends UUIDColumn(this) with PartitionKey
-    *     object email extends StringColumn(this)
-    *     object date extends DateTimeColumn(this)
+    *   class MyTable extends Table[MyTable, MyRecord] {
+    *     object id extends UUIDColumn with PartitionKey
+    *     object email extends StringColumn
+    *     object date extends DateTimeColumn
     *   }
     * }}}
     *
@@ -346,11 +364,16 @@ class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
     val recordMembers = extractRecordMembers(recordTpe)
     val colFields = extractColumnMembers(tableTpe, columns)
 
-    extractorRec(
-      colFields.typeMap,
-      recordMembers.toList,
-      TableDescriptor(tableTpe, recordTpe, colFields)
-    )
+    if (recordMembers.isEmpty) {
+      warning(s"Supplied record type $recordTpe has no fields defined, are you sure this is what you want?")
+      TableDescriptor.empty(tableTpe, recordTpe, colFields)
+    } else {
+      extractorRec(
+        colFields.typeMap,
+        recordMembers.toList,
+        TableDescriptor(tableTpe, recordTpe, colFields)
+      )
+    }
   }
 
   /**
@@ -359,9 +382,9 @@ class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
     * @return An optional symbol, if such a type was found in the type hierarchy.
     */
   def determineReferenceTable(tpe: Type): Option[Symbol] = {
-    tpe.baseClasses.reverse.find(symbol => {
+    tpe.baseClasses.reverse.find(symbol =>
       symbol.typeSignature.decls.exists(_.typeSignature <:< typeOf[AbstractColumn[_]])
-    })
+    )
   }
 
   /**
@@ -382,46 +405,111 @@ class TableHelperMacro(override val c: whitebox.Context) extends RootMacro(c) {
     value.charAt(0).toLower + value.drop(1)
   }
 
-  def macroImpl[T : WeakTypeTag, R : WeakTypeTag]: Tree = {
-    val tableType = weakTypeOf[T]
-    val recordType = weakTypeOf[R]
+  def materialize[T : WeakTypeTag, R : WeakTypeTag]: Tree = {
+    val tt = weakTypeOf[T]
+    val rt = weakTypeOf[R]
+
+    memoize[(Type, Type), Tree](WhiteboxToolbelt.tableHelperCache)(tt -> rt, { case (t, r) => macroImpl(t, r)})
+  }
+
+  /**
+    * This will search the implicit scope for a [[NamingStrategy]] defined.
+    * If none is found, this will return the table name as is.
+    * @param table The name of the table as derived from the user input.
+    * @return A new table name adjusted according to the [[NamingStrategy]].
+    */
+  def adjustedTableName(table: String): Tree = {
+    val strategy = c.inferImplicitValue(typeOf[NamingStrategy], silent = true)
+
+    if (strategy.isEmpty) {
+      info("No NamingStrategy found in implicit scope.")
+      q"$table"
+    } else {
+      info(s"Altering table name with strategy ${showCode(strategy)}")
+      val tree = q"$strategy.inferName($table)"
+      if (showTrees) {
+        echo(showCode(tree))
+      }
+
+      tree
+    }
+  }
+
+  def macroImpl(tableType: Type, recordType: Type): Tree = {
     val refTable = determineReferenceTable(tableType).map(_.typeSignature).getOrElse(tableType)
     val referenceColumns = refTable.decls.sorted.filter(_.typeSignature <:< typeOf[AbstractColumn[_]])
+    val refColumnTypes = referenceColumns.map(_.typeSignature)
     val tableName = extractTableName(refTable)
-    val columns = filterMembers[T, AbstractColumn[_]](exclusions)
+    val columns = filterMembers[AbstractColumn[_]](tableType, exclusions)
+
     val descriptor = extractor(tableType, recordType, referenceColumns)
+    val abstractFromRow = refTable.member(fromRowName).asMethod
+    val fromRowFn = descriptor.fromRow
+    val notImplemented = q"???"
+    val sasiIndexes = columns.filter(sym => sym.typeSignature <:< sasiIndexTpe) map { index =>
+      q"$tableTerm.${index.name.toTermName}"
+    }
+
+    if (fromRowFn.isEmpty && abstractFromRow.isAbstract) {
+      val unmatched = descriptor.debugList(descriptor.unmatched.map(_.field)).mkString("\n")
+      error(
+        s"""Please define def fromRow(row: ${showCode(rowType)}): ${printType(recordType)}.
+          Found unmatched record columns on ${printType(tableType)}
+          $unmatched
+        """
+      )
+    } else {
+      info(descriptor.showExtractor)
+    }
+
     val accessors = columns.map(_.asTerm.name).map(tm => q"table.instance.${tm.toTermName}").distinct
+    // Validate that column names at compile time.
+    //columns.map(col => validateColumnName(col.asTerm.name))
+
     val clsName = TypeName(c.freshName("anon$"))
-    val notImpemented = q"???"
+    val storeTpe = descriptor.hListStoreType.getOrElse(nothingTpe)
+    val storeMethod = descriptor.storeMethod.getOrElse(notImplemented)
 
-    q"""
+    val tree = q"""
        final class $clsName extends $macroPkg.TableHelper[$tableType, $recordType] {
-          type Repr = ${descriptor.storeType}
+          type Repr = $storeTpe
 
-          def tableName: $strTpe = $tableName
+          def tableName: $strTpe = ${adjustedTableName(tableName)}
 
-          def store($tableTerm: $tableType, $inputTerm: ${descriptor.storeType})(
+          def store($tableTerm: $tableType, $inputTerm: $storeTpe)(
            implicit space: $keyspaceType
           ): $builderPkg.InsertQuery.Default[$tableType, $recordType] = {
-            ${descriptor.storeMethod.getOrElse(notImpemented)}
+            $storeMethod
           }
 
           def tableKey($tableTerm: $tableType): $strTpe = {
-            ${inferPrimaryKey(tableName, tableType, referenceColumns.map(_.typeSignature))}
+            ${inferPrimaryKey(tableName, tableType, refColumnTypes)}
           }
 
           def fromRow($tableTerm: $tableType, $rowTerm: $rowType): $recordType = {
-            ${descriptor.fromRow.getOrElse(notImpemented)}
+            ${descriptor.fromRow.getOrElse(notImplemented)}
           }
 
           def fields($tableTerm: $tableType): scala.collection.immutable.Seq[$colType] = {
             scala.collection.immutable.Seq.apply[$colType](..$accessors)
           }
 
-          def debug: $macroPkg.Debugger = ${descriptor.debugger}
+          def sasiIndexes($tableTerm: $tableType): scala.collection.immutable.Seq[$sasiIndexTpe] = {
+            scala.collection.immutable.Seq.apply[$sasiIndexTpe](..$sasiIndexes)
+          }
        }
 
-       new $clsName(): $macroPkg.TableHelper[$tableType, $recordType]
+       new $clsName(): $macroPkg.TableHelper.Aux[$tableType, $recordType, $storeTpe]
     """
+
+    if (showTrees) {
+      echo(showCode(tree))
+    }
+
+    if (showCache) {
+      echo(WhiteboxToolbelt.tableHelperCache.show)
+    }
+
+    tree
   }
 }

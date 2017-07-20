@@ -17,13 +17,16 @@ package com.outworkers.phantom.tables
 
 import com.datastax.driver.core.SocketOptions
 import com.outworkers.phantom.builder.query.CreateQuery
-import com.outworkers.phantom.builder.serializers.KeySpaceSerializer
 import com.outworkers.phantom.connectors
 import com.outworkers.phantom.connectors.CassandraConnection
 import com.outworkers.phantom.database.Database
 import com.outworkers.phantom.dsl._
+import com.outworkers.phantom.tables.bugs.{JsonPreparedTable, SchemaBug656Table, SchemaBug663Table}
+import com.outworkers.phantom.tables.sasi.{MultiSASITable, SASIIndexedArticles}
 
-class TestDatabase(override val connector: CassandraConnection) extends Database[TestDatabase](connector) {
+class TestDatabase(
+  override val connector: CassandraConnection
+) extends Database[TestDatabase](connector) {
 
   object articles extends Articles with Connector
   object articlesByAuthor extends ArticlesByAuthor with Connector
@@ -38,16 +41,17 @@ class TestDatabase(override val connector: CassandraConnection) extends Database
   object simpleCompoundKeyTable extends SimpleCompoundKeyTable with Connector
   object complexCompoundKeyTable extends ComplexCompoundKeyTable with Connector
 
-  object counterTableTest extends ConcreteCounterTableTest with Connector
-  object secondaryCounterTable extends ConcreteSecondaryCounterTable with Connector
-  object brokenCounterCounterTable extends ConcreteBrokenCounterTableTest with Connector
+  object counterTableTest extends CounterTableTest with Connector
+  object secondaryCounterTable extends SecondaryCounterTable with Connector
+  object brokenCounterCounterTable extends BrokenCounterTableTest with Connector
 
   object indexedCollectionsTable extends IndexedCollectionsTable with Connector
   object indexedEntriesTable extends IndexedEntriesTable with Connector
-  object jsonTable extends JsonTable with connector.Connector
+  object jsonTable extends JsonTable with Connector
   object listCollectionTable extends ListCollectionTable with Connector
   object optionalPrimitives extends OptionalPrimitives with Connector
-  object primitives extends Primitives with Connector
+  object primitives extends PrimitivesTable with Connector
+  object oldPrimitives extends OldDslPrimitivesTable with Connector
 
   object primitivesJoda extends PrimitivesJoda with Connector
 
@@ -61,8 +65,8 @@ class TestDatabase(override val connector: CassandraConnection) extends Database
   }
 
   object secondaryIndexTable extends SecondaryIndexTable with Connector
-  object staticTable extends ConcreteStaticTableTest with Connector
-  object staticCollectionTable extends StaticCollectionTableTest with Connector
+  object staticTable extends StaticTableTest with Connector
+  object staticCollectionTable extends StaticCollectionTable with Connector
 
   object tableWithSingleKey extends TableWithSingleKey with Connector
   object tableWithCompoundKey extends TableWithCompoundKey with Connector
@@ -73,24 +77,31 @@ class TestDatabase(override val connector: CassandraConnection) extends Database
 
   object primaryCollectionsTable extends PrimaryCollectionTable with Connector
 
-  object timeSeriesTableWithTtl extends ConcreteTimeSeriesTableWithTTL with Connector
-  object timeSeriesTableWithTtl2 extends ConcreteTimeSeriesTableWithTTL2 with Connector
+  object timeSeriesTableWithTtl extends TimeSeriesTableWithTTL with Connector
+  object timeSeriesTableWithTtl2 extends TimeSeriesTableWithTTL2 with Connector
   object multipleKeysTable extends MultipleKeys with Connector
   object timeuuidTable extends TimeUUIDTable with Connector
 
   object events extends Events with Connector
-
+  object nestedCollectionTable extends NestedCollectionTable with Connector
   object scalaPrimitivesTable extends ScalaTypesMapTable with Connector
   object optionalIndexesTable extends OptionalSecondaryIndexTable with Connector
-  object tuple2Table extends ConcreteTupleColumnTable with Connector
-  object nestedTupleTable extends ConcreteNestedTupleColumnTable with Connector
-  object tupleCollectionsTable extends ConcreteTupleCollectionsTable with Connector
+  object tuple2Table extends TupleColumnTable with Connector
+  object nestedTupleTable extends NestedTupleColumnTable with Connector
+  object tupleCollectionsTable extends TupleCollectionsTable with Connector
 
   object tableTypeTuple extends TupleTypeTable with Connector
   object wideTable extends WideTable with Connector
   object sessionsByUser extends SessionsByUserId with Connector
 
   object optDerivedTable extends OptionalDerivedTable with Connector
+  object schemaBug656 extends SchemaBug656Table with Connector
+  object schemaBug663Table extends SchemaBug663Table with Connector
+
+  object derivedPrimitivesTable extends DerivedPrimitivesTable with Connector
+  object sasiIndexedArticles extends SASIIndexedArticles with Connector
+  object multiSasiTable extends MultiSASITable with Connector
+  object jsonPreparedTable extends JsonPreparedTable with Connector
 }
 
 object Connector {
@@ -101,12 +112,10 @@ object Connector {
         .setReadTimeoutMillis(20000)
       )
     ).noHeartbeat().keySpace(
-      "phantom",
-      KeySpaceSerializer("phantom").ifNotExists().`with`(
+      KeySpace("phantom").ifNotExists().`with`(
         replication eqs SimpleStrategy.replication_factor(1)
       )
     )
-
 }
 
 object TestDatabase extends TestDatabase(Connector.default)

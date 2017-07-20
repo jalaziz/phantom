@@ -29,7 +29,7 @@ class TimeUuidTest extends PhantomSuite {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    database.timeuuidTable.insertSchema()
+    database.timeuuidTable.createSchema()
   }
 
   it should "be able to store and retrieve a time slice of records based on a combination of minTimeuuid and maxTimeuuid" in {
@@ -122,7 +122,7 @@ class TimeUuidTest extends PhantomSuite {
       )
 
     val chain = for {
-      _ <- Future.sequence(records.map(r => database.timeuuidTable.store(r).future()))
+      _ <- database.timeuuidTable.storeRecords(records)
       get <- database.timeuuidTable.select
         .where(_.user eqs user)
         .and(_.id >= minTimeuuid(start.plusSeconds(-3 * intervalOffset)))

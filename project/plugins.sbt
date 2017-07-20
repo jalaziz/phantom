@@ -18,9 +18,9 @@ resolvers ++= Seq(
   "Twitter Repo" at "http://maven.twttr.com/",
   Resolver.sonatypeRepo("releases"),
   Resolver.bintrayRepo("websudos", "oss-releases"),
-  Resolver.url("scoverage-bintray", url("https://dl.bintray.com/sksamuel/sbt-plugins/"))(Resolver.ivyStylePatterns),
-  Resolver.url("bintray-csl-sbt-plugins", url("https://dl.bintray.com/twittercsl/sbt-plugins"))(Resolver.mavenStylePatterns),
-  Resolver.url("twitter-csl-sbt-plugins", url("https://dl.bintray.com/twittercsl/sbt-plugins"))(Resolver.ivyStylePatterns)
+  Resolver.bintrayIvyRepo("sksamuel", "sbt-plugins"),
+  Resolver.bintrayIvyRepo("twittercsl-ivy", "sbt-plugins"),
+  Resolver.bintrayRepo("twittercsl", "sbt-plugins")
 )
 
 lazy val scalaTravisEnv = sys.env.get("TRAVIS_SCALA_VERSION")
@@ -29,9 +29,9 @@ lazy val isCi = sys.env.get("CI").exists("true" == )
 
 lazy val Versions = new {
   val scrooge = if (isCi) {
-    if (sys.props("java.specification.version") == "1.8" && !isScala210) "4.14.0" else "4.7.0"
+    if (sys.props("java.specification.version") == "1.8" && !isScala210) "4.18.0" else "4.7.0"
   } else {
-    if (sys.props("java.specification.version") == "1.8") "4.14.0" else "4.7.0"
+    if (sys.props("java.specification.version") == "1.8") "4.18.0" else "4.7.0"
   }
 }
 
@@ -56,6 +56,10 @@ addSbtPlugin("com.typesafe.sbt" % "sbt-git" % "0.8.5")
 addSbtPlugin("com.websudos" % "sbt-package-dist" % "1.2.0")
 
 addSbtPlugin("com.twitter" % "scrooge-sbt-plugin" % Versions.scrooge)
+
+addSbtPlugin("org.tpolecat" % "tut-plugin" % "0.5.2")
+
+addSbtPlugin("com.typesafe.sbt" % "sbt-site" % "0.8.1")
 
 addSbtPlugin("com.eed3si9n" % "sbt-doge" % "0.1.5")
 

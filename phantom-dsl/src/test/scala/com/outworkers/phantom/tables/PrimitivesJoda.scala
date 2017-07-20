@@ -16,8 +16,6 @@
 package com.outworkers.phantom.tables
 
 import com.datastax.driver.core.PagingState
-import com.outworkers.phantom.connectors.RootConnector
-import com.outworkers.phantom.builder.query.InsertQuery
 import com.outworkers.phantom.dsl._
 import org.joda.time.DateTime
 
@@ -29,13 +27,15 @@ case class JodaRow(
   timestamp: DateTime
 )
 
-abstract class PrimitivesJoda extends CassandraTable[PrimitivesJoda, JodaRow] with RootConnector {
-  object pkey extends StringColumn(this) with PartitionKey
-  object intColumn extends IntColumn(this)
-  object timestamp extends DateTimeColumn(this)
+abstract class PrimitivesJoda extends Table[
+  PrimitivesJoda,
+  JodaRow
+] {
+  object pkey extends StringColumn with PartitionKey
+  object intColumn extends IntColumn
+  object timestamp extends DateTimeColumn
 
   def fetchPage(limit: Int, paging: Option[PagingState]): Future[ListResult[JodaRow]] = {
     select.limit(limit).paginateRecord(paging)
   }
 }
-

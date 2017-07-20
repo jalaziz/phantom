@@ -15,14 +15,13 @@
  */
 package com.outworkers.phantom.builder.query
 
-import com.datastax.driver.core._
+import com.datastax.driver.core.{ConsistencyLevel, Session}
 import com.outworkers.phantom.builder._
 import com.outworkers.phantom.builder.query.engine.CQLQuery
 import com.outworkers.phantom.builder.query.options.TablePropertyClause
 import com.outworkers.phantom.builder.syntax.CQLSyntax
-import com.outworkers.phantom.column.AbstractColumn
 import com.outworkers.phantom.connectors.KeySpace
-import com.outworkers.phantom.{CassandraTable, Manager}
+import com.outworkers.phantom.{CassandraTable, Manager, ResultSet}
 
 import scala.annotation.implicitNotFound
 import scala.concurrent.{ExecutionContextExecutor, Future => ScalaFuture}
@@ -37,7 +36,7 @@ class RootCreateQuery[
       keySpace.name,
       table.tableName,
       table.tableKey,
-      table.columns.map(_.qb).toSeq
+      table.columns.map(_.qb)
     )
   }
 
@@ -46,7 +45,7 @@ class RootCreateQuery[
       keySpace.name,
       table.tableName,
       table.tableKey,
-      table.columns.map(_.qb).toSeq
+      table.columns.map(_.qb)
     )
   }
 
@@ -86,7 +85,7 @@ class CreateQuery[
   val withClause: WithPart = WithPart.empty,
   val usingPart: UsingPart = UsingPart.empty,
   override val options: QueryOptions = QueryOptions.empty
-)(implicit keySpace: KeySpace) extends ExecutableStatement {
+)(implicit val keySpace: KeySpace) extends ExecutableStatement {
 
   def consistencyLevel_=(level: ConsistencyLevel)(implicit session: Session): CreateQuery[Table, Record, Specified] = {
     if (session.protocolConsistency) {
@@ -110,7 +109,7 @@ class CreateQuery[
 
   @implicitNotFound("You cannot use 2 `with` clauses on the same create query. Use `and` instead.")
   final def `with`(clause: TablePropertyClause): CreateQuery[Table, Record, Status] = {
-    if (withClause.list.isEmpty) {
+    if (withClause.queries.isEmpty) {
       new CreateQuery(
         table,
         init,
@@ -161,16 +160,16 @@ class CreateQuery[
 
   override def qb: CQLQuery = (withClause merge WithPart.empty merge usingPart) build init
 
-  private[phantom] def indexList(name: String): ExecutableStatementList = {
-    new ExecutableStatementList(table.secondaryKeys map {
-      key => {
-        if (key.isMapKeyIndex) {
-          QueryBuilder.Create.mapIndex(table.tableName, name, key.name)
-        } else if (key.isMapEntryIndex) {
-          QueryBuilder.Create.mapEntries(table.tableName, name, key.name)
-        } else {
-          QueryBuilder.Create.index(table.tableName, name, key.name)
-        }
+  private[phantom] val indexList: ExecutableStatementList[Seq] = {
+    val name = keySpace.name
+
+    new ExecutableStatementList(table.secondaryKeys map { key =>
+      if (key.isMapKeyIndex) {
+        QueryBuilder.Create.mapIndex(table.tableName, name, key.name)
+      } else if (key.isMapEntryIndex) {
+        QueryBuilder.Create.mapEntries(table.tableName, name, key.name)
+      } else {
+        QueryBuilder.Create.index(table.tableName, name, key.name)
       }
     })
   }
@@ -179,20 +178,23 @@ class CreateQuery[
     implicit session: Session,
     ec: ExecutionContextExecutor
   ): ScalaFuture[ResultSet] = {
-    if (table.secondaryKeys.isEmpty) {
-      scalaQueryStringExecuteToFuture(new SimpleStatement(qb.terminate.queryString))
-    } else {
-      super.future() flatMap {
-        res => {
-          indexList(keySpace.name).future() map {
-            _ => {
-              Manager.logger.debug(s"Creating secondary indexes on ${QueryBuilder.keyspace(keySpace.name, table.tableName).queryString}")
-              res
-            }
-          }
+    for {
+      init <- super.future()
+      secondaryIndexFuture = if (indexList.isEmpty) ScalaFuture.successful(Seq.empty[ResultSet]) else indexList.future()
+      secondaryIndexes <- secondaryIndexFuture map { results =>
+        Manager.logger.debug(s"Creating secondary indexes on ${QueryBuilder.keyspace(keySpace.name, table.tableName).queryString}")
+        results
+      }
+      sasiFutures = {
+        val sasiQueries = table.sasiQueries()
+        if (sasiQueries.isEmpty) {
+          ScalaFuture.successful(Seq.empty[ResultSet])
+        } else {
+          sasiQueries.future()
         }
       }
-    }
+      sasiIndexes <- sasiFutures
+    } yield init
   }
 }
 

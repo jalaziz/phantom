@@ -15,9 +15,9 @@
  */
 package com.outworkers.phantom.tables
 
-import com.outworkers.phantom.connectors.RootConnector
-import com.outworkers.phantom.builder.query.InsertQuery
 import com.outworkers.phantom.dsl._
+
+import scala.concurrent.Future
 
 case class Article(
   id: UUID,
@@ -25,17 +25,29 @@ case class Article(
   orderId: Long
 )
 
-abstract class Articles extends CassandraTable[Articles, Article] with RootConnector {
-  object id extends UUIDColumn(this) with PartitionKey
-  object name extends StringColumn(this)
-  object orderId extends LongColumn(this)
+abstract class Articles extends Table[Articles, Article] {
+  object id extends UUIDColumn with PartitionKey
+  object name extends StringColumn
+  object orderId extends LongColumn
 }
 
 
-abstract class ArticlesByAuthor extends CassandraTable[ArticlesByAuthor, Article] with RootConnector {
-  object author_id extends UUIDColumn(this) with PartitionKey
-  object category extends UUIDColumn(this) with PartitionKey
-  object id extends UUIDColumn(this) with PrimaryKey
-  object name extends StringColumn(this)
-  object orderId extends LongColumn(this)
+abstract class ArticlesByAuthor extends Table[ArticlesByAuthor, Article] {
+  object author_id extends UUIDColumn with PartitionKey
+  object category extends UUIDColumn with PartitionKey
+  object id extends UUIDColumn with PrimaryKey
+  object name extends StringColumn
+  object orderId extends LongColumn
+}
+
+
+case class User(id: UUID, name:String)
+
+abstract class Users extends Table[Users, User] {
+  object id extends UUIDColumn with PartitionKey
+  object name extends StringColumn
+
+  def getById(id: UUID): Future[Option[User]] = {
+    select.where(_.id eqs id).one()
+  }
 }
