@@ -106,13 +106,9 @@ trait RootMacro extends HListHelpers with WhiteboxToolbelt {
   ) extends RecordMatch
 
   case class MatchedField(
-    left: Record.Field,
-    right: Column.Field
-  ) extends RecordMatch {
-    def column: Column.Field = right
-
-    def record: Record.Field = left
-  }
+    record: Record.Field,
+    column: Column.Field
+  ) extends RecordMatch
 
   implicit class ListMapOps[K, V, M[X] <: Traversable[X]](
     val lm: ListMap[K, M[V]]
@@ -148,7 +144,7 @@ trait RootMacro extends HListHelpers with WhiteboxToolbelt {
   ) {
 
     def unmatchedColumns: Seq[Column.Field] = {
-      members.filterNot(m => matched.exists(r => r.right.name == m.name))
+      members.filterNot(m => matched.exists(r => r.column.name == m.name))
     }
 
     def withMatch(m: RecordMatch): TableDescriptor = {
@@ -175,8 +171,8 @@ trait RootMacro extends HListHelpers with WhiteboxToolbelt {
 
     def fromRow: Option[Tree] = {
       if (unmatched.isEmpty) {
-        val columnNames = matched.sortBy(_.left.index).map { m =>
-          q"$tableTerm.${m.right.name}.apply($rowTerm)"
+        val columnNames = matched.sortBy(_.record.index).map { m =>
+          q"$tableTerm.${m.column.name}.apply($rowTerm)"
         }
 
         Some(q"""new $recordType(..$columnNames)""")
@@ -251,8 +247,8 @@ trait RootMacro extends HListHelpers with WhiteboxToolbelt {
 
     protected[this] def valueTerm(field: MatchedField, refTerm: Option[Tree]) = {
       refTerm match {
-        case Some(ref) => q"$enginePkg.CQLQuery($tableTerm.${field.right.name}.asCql($ref.${field.left.name}))"
-        case None => q"$enginePkg.CQLQuery($tableTerm.${field.right.name}.asCql($inputTerm.${field.left.name}))"
+        case Some(ref) => q"$enginePkg.CQLQuery($tableTerm.${field.column.name}.asCql($ref.${field.record.name}))"
+        case None => q"$enginePkg.CQLQuery($tableTerm.${field.column.name}.asCql($inputTerm.${field.record.name}))"
       }
     }
 
@@ -280,7 +276,7 @@ trait RootMacro extends HListHelpers with WhiteboxToolbelt {
         }
 
         val insertions = matched map { field =>
-          q"${tableField(field.right.name)} -> ${valueTerm(field, referenceTerm)}"
+          q"${tableField(field.column.name)} -> ${valueTerm(field, referenceTerm)}"
         }
 
         val finalDefinitions = unmatchedColumnInserts ++ insertions
@@ -340,7 +336,7 @@ trait RootMacro extends HListHelpers with WhiteboxToolbelt {
     }
 
     def showExtractor: String = matched.map(f =>
-      s"rec.${f.left.name} -> table.${f.right.name} | ${printType(f.right.tpe)}"
+      s"rec.${f.record.name} -> table.${f.column.name} | ${printType(f.record.tpe)}"
     ) mkString "\n"
   }
 
@@ -397,19 +393,8 @@ trait RootMacro extends HListHelpers with WhiteboxToolbelt {
     )(collection.breakOut) distinct
   }
 
-  def filterMembers[T : WeakTypeTag, Filter : TypeTag](
-    exclusions: Symbol => Option[Symbol] = { s: Symbol => Some(s) }
-  ): Seq[Symbol] = {
-    filterMembers[Filter](weakTypeOf[T], exclusions)
-  }
-
   def filterColumns[Filter : TypeTag](columns: Seq[Type]): Seq[Type] = {
     columns.filter(_.baseClasses.exists(typeOf[Filter].typeSymbol ==))
-  }
-
-
-  def filterColumns(columns: Seq[Type], filter: Type): Seq[Type] = {
-    columns.filter(t => t <:< filter)
   }
 
   def extractColumnMembers(table: Type, columns: List[Symbol]): List[Column.Field] = {
@@ -437,15 +422,9 @@ trait RootMacro extends HListHelpers with WhiteboxToolbelt {
               member.asModule.name.toTermName,
               head.asType.toType.asSeenFrom(memberType, colSymbol)
             )
-            case _ => c.abort(
-              c.enclosingPosition,
-              "Expected exactly one type parameter provided for root column type"
-            )
+            case _ => abort("Expected exactly one type parameter provided for root column type")
           }
-        case None => c.abort(
-          c.enclosingPosition,
-          s"Could not find root column type for ${member.asModule.name}"
-        )
+        case None => abort(s"Could not find root column type for ${member.asModule.name}")
       }
     }
   }

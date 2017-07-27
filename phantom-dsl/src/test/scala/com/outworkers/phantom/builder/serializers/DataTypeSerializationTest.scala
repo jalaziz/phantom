@@ -76,6 +76,25 @@ class DataTypeSerializationTest extends FlatSpec with Matchers with Serializatio
     cType shouldEqual s"frozen<set<${stringP.dataType}>>"
   }
 
+
+  it should "generate a frozen collection type for a List inside a Map" in {
+    val innerP = Primitive[Map[String, List[String]]]
+
+    innerP.dataType shouldEqual s"map<text, frozen<list<text>>>"
+  }
+
+  it should "generate a frozen collection type for a List inside a list" in {
+    val innerP = Primitive[List[List[String]]]
+
+    innerP.dataType shouldEqual s"list<frozen<list<text>>>"
+  }
+
+  it should "generate a frozen collection type for a Set inside a list" in {
+    val innerP = Primitive[List[Set[String]]]
+
+    innerP.dataType shouldEqual s"list<frozen<set<text>>>"
+  }
+
   it should "generate a frozen collection type for a tuple inside a list" in {
     val innerP = Primitive[(Int, String)]
     val cType = db.tupleCollectionsTable.tuples.cassandraType
