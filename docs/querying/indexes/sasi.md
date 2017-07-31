@@ -45,14 +45,6 @@ object Connector {
       )
     )
 }
-```
-
-Simple example:
-
-```scala
-
-import com.outworkers.phantom.connectors._
-import com.outworkers.phantom.dsl._
 
 case class MultiSASIRecord(
   id: UUID,
@@ -92,8 +84,6 @@ class SASIDatabase(override val connector: CassandraConnection) extends Database
 }
 
 object SASIDatabase extends SASIDatabase(Connector.default)
-
-val db = SASIDatabase
 
 ```
 
@@ -146,10 +136,9 @@ Example query, based on the schema defined above.
 ```scala
 
 import com.outworkers.phantom.dsl._
+import SASIDatabase._
 
-import db._
-
-db.multiSasiTable.select.where(_.phoneNumber like prefix("example")).fetch()
+SASIDatabase.multiSasiTable.select.where(_.phoneNumber like prefix("example")).fetch()
 ```
   
 #### Mode.Contains
@@ -164,14 +153,13 @@ Example possible queries, based on the schema defined above.
 ```scala
 
 import com.outworkers.phantom.dsl._
-
-import db._
+import SASIDatabase._
 
 val pre = "text"
 
-db.multiSasiTable.select.where(_.name like prefix(pre)).fetch()
-db.multiSasiTable.select.where(_.name like contains(pre)).fetch()
-db.multiSasiTable.select.where(_.name like suffix(pre)).fetch()
+SASIDatabase.multiSasiTable.select.where(_.name like prefix(pre)).fetch()
+SASIDatabase.multiSasiTable.select.where(_.name like contains(pre)).fetch()
+SASIDatabase.multiSasiTable.select.where(_.name like suffix(pre)).fetch()
 ```
 
 #### Mode.Sparse
@@ -189,16 +177,15 @@ Example possible queries.
 ```scala
 
 import com.outworkers.phantom.dsl._
+import SASIDatabase._
 
-import db._
-
-db.multiSasiTable.select.where(_.customers eqs 50).fetch()
+SASIDatabase.multiSasiTable.select.where(_.customers eqs 50).fetch()
 
 // Select all entries with at least 50 customers
-db.multiSasiTable.select.where(_.customers >= 50).fetch()
+SASIDatabase.multiSasiTable.select.where(_.customers >= 50).fetch()
 
 // Select all entries with at most 50 customers
-db.multiSasiTable.select.where(_.customers <= 50).fetch()
+SASIDatabase.multiSasiTable.select.where(_.customers <= 50).fetch()
 
 ```
 
