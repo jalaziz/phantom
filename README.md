@@ -35,7 +35,7 @@ This is a table of the available modules for the various Scala versions. Not all
 | phantom-sbt           | <span>yes</span>    | <span>no</span>  | <span>no</span>    |
 | phantom-example       | <span>yes</span>    | <span>yes</span> | <span>yes</span>   |
 | phantom-thrift        | <span>yes</span>    | <span>yes</span> | <span>yes</span>   |
-| phantom-finagle       | <span>yes</span>    | <span>yes</span> | <span>yes</span>   |
+| phantom-finagle       | <span>no</span>    | <span>yes</span> | <span>yes</span>   |
 | phantom-streams       | <span>yes</span>    | <span>yes</span> | <span>yes</span>   |
 
 #### Phantom Pro subscription edition
@@ -46,7 +46,8 @@ Modules marked with "x" are still in beta or pre-publishing mode.
 | ------------          | ------------------- | ------------------| ----------------- | -------------- |
 | phantom-dse           | <span>yes</span>    | <span>yes</span>  | <span>yes</span>  | Released       |
 | phantom-udt           | <span>yes</span>    | <span>yes</span>  | <span>yes</span>  | Released       |
-| phantom-autotables    | <span>x</span>      | <span>x</span>    | <span>x</span>    | May 2017       |
+| phantom-docker        | <span>x</span>      | <span>no</span>   | <span>no</span>   | Released       |
+| phantom-autotables    | <span>x</span>      | <span>x</span>    | <span>x</span>    | Released       |
 | phantom-graph         | <span>x</span>      | <span>x</span>    | <span>x</span>    | April 2017     |
 | phantom-spark         | <span>x</span>      | <span>x</span>    | <span>x</span>    | July 2017      |
 | phantom-solr          | <span>x</span>      | <span>x</span>    | <span>x</span>    | July 2017      |
