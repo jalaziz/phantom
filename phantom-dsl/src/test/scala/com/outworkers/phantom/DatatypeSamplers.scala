@@ -13,26 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.outworkers.phantom.tables
+package com.outworkers.phantom
 
-import com.outworkers.phantom.dsl._
+import com.outworkers.util.samplers.Sample
+import org.joda.time.{DateTime, DateTimeZone, LocalDate}
 
-import scala.concurrent.Future
+/**
+  * A collection of implicit samplers for custom types used throughout phantom
+  * and normally with native primitive support.
+  */
+trait DatatypeSamplers {
 
-case class ScalaPrimitiveMapRecord(
-  id: UUID,
-  map: Map[DateTime, BigDecimal]
-)
+  implicit object JodaTimeSampler extends Sample[DateTime] {
+    override def sample: DateTime = DateTime.now(DateTimeZone.UTC)
+  }
 
-abstract class ScalaTypesMapTable extends Table[
-  ScalaTypesMapTable,
-  ScalaPrimitiveMapRecord
-] {
-
-  object id extends UUIDColumn with PartitionKey
-  object map extends MapColumn[DateTime, BigDecimal]
-
-  def findById(id: UUID): Future[Option[ScalaPrimitiveMapRecord]] = {
-    select.where(_.id eqs id).one()
+  implicit object JodaLocalDateSampler extends Sample[LocalDate] {
+    override def sample: LocalDate = LocalDate.now(DateTimeZone.UTC)
   }
 }

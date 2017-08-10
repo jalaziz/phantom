@@ -19,6 +19,7 @@ import java.net.InetAddress
 import java.util.Date
 
 import com.datastax.driver.core.ProtocolVersion
+import com.outworkers.phantom.DatatypeSamplers
 import com.outworkers.util.samplers._
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
@@ -31,6 +32,7 @@ import org.scalatest.{FlatSpec, Matchers, _}
   */
 class PrimitiveRoundtripTests extends FlatSpec
   with Matchers
+  with DatatypeSamplers
   with GeneratorDrivenPropertyChecks {
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration = {
@@ -116,7 +118,7 @@ class PrimitiveRoundtripTests extends FlatSpec
   }
 
   it should "serialize and de-serialize a Joda Local Date" in {
-    roundtrip[org.joda.time.LocalDate]
+    sroundtrip[org.joda.time.LocalDate]
   }
 
   it should "serialize and deserialize a boolean primitive" in {

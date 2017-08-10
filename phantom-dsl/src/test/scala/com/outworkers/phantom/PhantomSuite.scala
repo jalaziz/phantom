@@ -34,6 +34,7 @@ trait PhantomBaseSuite extends Suite with Matchers
   with BeforeAndAfterAll
   with ScalaFutures
   with JsonFormats
+  with DatatypeSamplers
   with OptionValues {
 
   implicit val formats: Formats = org.json4s.DefaultFormats + new DateTimeSerializer + new UUIDSerializer
@@ -47,14 +48,6 @@ trait PhantomBaseSuite extends Suite with Matchers
   private[this] val defaultTimeoutSpan = Span(defaultScalaTimeoutSeconds, Seconds)
 
   implicit val defaultTimeout: PatienceConfiguration.Timeout = timeout(defaultTimeoutSpan)
-
-  implicit object JodaTimeSampler extends Sample[DateTime] {
-    override def sample: DateTime = DateTime.now(DateTimeZone.UTC)
-  }
-
-  implicit object JodaLocalDateSampler extends Sample[LocalDate] {
-    override def sample: LocalDate = LocalDate.now(DateTimeZone.UTC)
-  }
 
   override implicit val patienceConfig = PatienceConfig(
     timeout = defaultTimeoutSpan,
