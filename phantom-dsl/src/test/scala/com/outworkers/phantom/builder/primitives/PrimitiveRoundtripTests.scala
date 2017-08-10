@@ -115,6 +115,10 @@ class PrimitiveRoundtripTests extends FlatSpec
     roundtrip(Gen.option(javaDateGen))
   }
 
+  it should "serialize and de-serialize a Joda Local Date" in {
+    roundtrip[org.joda.time.LocalDate]
+  }
+
   it should "serialize and deserialize a boolean primitive" in {
     roundtrip[Boolean]
   }
