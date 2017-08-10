@@ -41,7 +41,7 @@ private[phantom] object DateSerializer {
 }
 
 @implicitNotFound(msg = "Type ${RR} must be a pre-defined Cassandra primitive.")
-abstract class Primitive[RR] {
+abstract class Primitive[@specialized(Int, Double, Float, Byte, Long, Boolean, Short) RR] {
 
   protected[this] def notNull[T](value: T, msg: String = "Value cannot be null"): Unit = {
     if (Option(value).isEmpty) throw new NullPointerException(msg)
