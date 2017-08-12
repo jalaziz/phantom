@@ -25,13 +25,9 @@ import org.scalatest.{Assertion, FlatSpec, Matchers}
 
 class IndexedRoundtripTests extends FlatSpec with Matchers with GeneratorDrivenPropertyChecks {
 
-  private[this] val genLower: Int = -100000
-  private[this] val genHigher: Int = -genLower
-
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration = {
     PropertyCheckConfiguration(minSuccessful = 300)
   }
-
 
   def roundtrip[T](gen: Gen[T])(fn: T => T)(implicit ev: Primitive[T]): Assertion = {
     forAll(gen, protocolGen) { (sample, version) =>
