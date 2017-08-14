@@ -30,18 +30,18 @@ import shapeless.{::, =:!=, HList, HNil}
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
 
-class InsertQuery[
+case class InsertQuery[
   Table <: CassandraTable[Table, _],
   Record,
   Status <: ConsistencyBound,
   PS <: HList
 ](
-  private[this] val table: Table,
-  private[this] val init: CQLQuery,
-  private[this] val columnsPart: ColumnsPart = ColumnsPart.empty,
-  private[this] val valuePart: ValuePart = ValuePart.empty,
-  private[this] val usingPart: UsingPart = UsingPart.empty,
-  private[this] val lightweightPart: LightweightPart = LightweightPart.empty,
+  table: Table,
+  init: CQLQuery,
+  columnsPart: ColumnsPart = ColumnsPart.empty,
+  valuePart: ValuePart = ValuePart.empty,
+  usingPart: UsingPart = UsingPart.empty,
+  lightweightPart: LightweightPart = LightweightPart.empty,
   override val options: QueryOptions = QueryOptions.empty
 ) extends ExecutableStatement with Batchable {
 
@@ -77,45 +77,23 @@ class InsertQuery[
     col: Table => AbstractColumn[_],
     value: OperatorClause.Condition
   ): InsertQuery[Table, Record, Status, PS] = {
-    new InsertQuery(
-      table,
-      init,
-      columnsPart append CQLQuery(col(table).name),
-      valuePart append value.qb,
-      usingPart,
-      lightweightPart,
-      options
-    )
+    copy(columnsPart = columnsPart append CQLQuery(col(table).name))
   }
 
   def values[RR](insertions: (CQLQuery, CQLQuery)*): InsertQuery[Table, Record, Status, PS] = {
     val (appendedCols, appendedVals) = (insertions :\ columnsPart -> valuePart) {
       case ((columnRef, valueRef), (cols, vals)) => Tuple2(cols append columnRef, vals append valueRef)
     }
-
-    new InsertQuery(
-      table,
-      init,
-      appendedCols,
-      appendedVals,
-      usingPart,
-      lightweightPart,
-      options
-    )
+    copy(columnsPart = appendedCols, valuePart = appendedVals)
   }
 
   def value[RR](
     col: Table => AbstractColumn[RR],
     value: RR
   )(): InsertQuery[Table, Record, Status, PS] = {
-    new InsertQuery(
-      table,
-      init,
-      columnsPart append CQLQuery(col(table).name),
-      valuePart append CQLQuery(col(table).asCql(value)),
-      usingPart,
-      lightweightPart,
-      options
+    copy(
+      columnsPart = columnsPart append CQLQuery(col(table).name),
+      valuePart = valuePart append CQLQuery(col(table).asCql(value))
     )
   }
 
@@ -123,14 +101,9 @@ class InsertQuery[
     col: Table => AbstractColumn[RR],
     value: PrepareMark
   ): InsertQuery[Table, Record, Status, RR :: PS] = {
-    new InsertQuery(
-      table,
-      init,
-      columnsPart append CQLQuery(col(table).name),
-      valuePart append value.qb,
-      usingPart,
-      lightweightPart,
-      options
+    copy(
+      columnsPart = columnsPart append CQLQuery(col(table).name),
+      valuePart = valuePart append value.qb
     )
   }
 
@@ -161,14 +134,9 @@ class InsertQuery[
   final def valueOrNull[RR](col: Table => AbstractColumn[RR], value: RR) : InsertQuery[Table, Record, Status, PS] = {
     if (Option(value).isDefined) {
       val insertValue = col(table).asCql(value)
-      new InsertQuery(
-        table,
-        init,
-        columnsPart append CQLQuery(col(table).name),
-        valuePart append CQLQuery(insertValue),
-        usingPart,
-        lightweightPart,
-        options
+      copy(
+        columnsPart = columnsPart append CQLQuery(col(table).name),
+        valuePart = valuePart append CQLQuery(insertValue)
       )
     } else {
       this
@@ -180,27 +148,11 @@ class InsertQuery[
   }
 
   final def ttl(value: PrepareMark): InsertQuery[Table, Record, Status, Int :: PS] = {
-    new InsertQuery(
-      table,
-      init,
-      columnsPart,
-      valuePart,
-      usingPart append QueryBuilder.ttl(value.qb.queryString),
-      lightweightPart,
-      options
-    )
+    copy(usingPart = usingPart append QueryBuilder.ttl(value.qb.queryString))
   }
 
   def ttl(seconds: Int): InsertQuery[Table, Record, Status, PS] = {
-    new InsertQuery(
-      table,
-      init,
-      columnsPart,
-      valuePart,
-      usingPart append QueryBuilder.ttl(seconds.toString),
-      lightweightPart,
-      options
-    )
+    copy(usingPart = usingPart append QueryBuilder.ttl(seconds.toString))
   }
 
   def ttl(seconds: Long): InsertQuery[Table, Record, Status, PS] = ttl(seconds.toInt)
@@ -210,50 +162,18 @@ class InsertQuery[
   }
 
   def using(clause: UsingClause.Condition): InsertQuery[Table, Record, Status, PS] = {
-    new InsertQuery(
-      table,
-      init,
-      columnsPart,
-      valuePart,
-      usingPart append clause.qb,
-      lightweightPart,
-      options
-    )
+    copy(usingPart = usingPart append clause.qb)
   }
 
   final def timestamp(value: Long): InsertQuery[Table, Record, Status, PS] = {
-    new InsertQuery(
-      table,
-      init,
-      columnsPart,
-      valuePart,
-      usingPart append QueryBuilder.timestamp(value),
-      lightweightPart,
-      options
-    )
+    copy(usingPart = usingPart append QueryBuilder.timestamp(value))
   }
 
   def consistencyLevel_=(level: ConsistencyLevel)(implicit session: Session): InsertQuery[Table, Record, Specified, PS] = {
     if (session.protocolConsistency) {
-      new InsertQuery(
-        table,
-        init,
-        columnsPart,
-        valuePart,
-        usingPart,
-        lightweightPart,
-        options.consistencyLevel_=(level)
-      )
+      copy(options = options.consistencyLevel_=(level))
     } else {
-      new InsertQuery(
-        table,
-        init,
-        columnsPart,
-        valuePart,
-        usingPart append QueryBuilder.consistencyLevel(level.toString),
-        lightweightPart,
-        options
-      )
+      copy(usingPart = usingPart append QueryBuilder.consistencyLevel(level.toString))
     }
   }
 
@@ -262,15 +182,7 @@ class InsertQuery[
   }
 
   def ifNotExists(): InsertQuery[Table, Record, Status, PS] = {
-    new InsertQuery(
-      table,
-      init,
-      columnsPart,
-      valuePart,
-      usingPart,
-      lightweightPart append CQLQuery(CQLSyntax.ifNotExists),
-      options
-    )
+    copy(lightweightPart = lightweightPart append CQLQuery(CQLSyntax.ifNotExists))
   }
 }
 
