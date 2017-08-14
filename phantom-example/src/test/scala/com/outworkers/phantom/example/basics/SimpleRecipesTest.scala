@@ -19,8 +19,6 @@ import com.outworkers.phantom.dsl.context
 import com.outworkers.phantom.example.ExampleSuite
 import com.outworkers.util.samplers._
 
-import scala.concurrent.Future
-
 class SimpleRecipesTest extends ExampleSuite {
 
   it should "insert a new record in the recipes table and retrieve it" in {

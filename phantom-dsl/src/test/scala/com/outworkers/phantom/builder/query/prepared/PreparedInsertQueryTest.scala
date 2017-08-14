@@ -175,7 +175,7 @@ class PreparedInsertQueryTest extends PhantomSuite {
     }
   }
 
-  it should "execute a prepared TTL bind with a " in {
+  it should "execute a prepared TTL bind with a consistency level" in {
     val usedTtl = 10
 
     val sample = gen[Recipe]
