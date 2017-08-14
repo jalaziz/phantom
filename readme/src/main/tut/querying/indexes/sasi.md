@@ -45,11 +45,6 @@ object Connector {
       )
     )
 }
-```
-
-Simple example:
-
-```tut:silent
 
 import com.outworkers.phantom.connectors._
 import com.outworkers.phantom.dsl._
@@ -143,13 +138,11 @@ Examples can be found in [SASIIntegrationTest.scala](/phantom-dsl/src/test/scala
  
 Example query, based on the schema defined above.
 
-```tut:silent
+```tut
 
 import com.outworkers.phantom.dsl._
 
-import db._
-
-db.multiSasiTable.select.where(_.phoneNumber like prefix("example")).fetch()
+SASIDatabase.multiSasiTable.select.where(_.phoneNumber like prefix("example")).queryString
 ```
   
 #### Mode.Contains

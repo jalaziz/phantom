@@ -45,11 +45,6 @@ object Connector {
       )
     )
 }
-```
-
-Simple example:
-
-```scala
 
 import com.outworkers.phantom.connectors._
 import com.outworkers.phantom.dsl._
@@ -144,12 +139,50 @@ Examples can be found in [SASIIntegrationTest.scala](/phantom-dsl/src/test/scala
 Example query, based on the schema defined above.
 
 ```scala
-
+     | 
+     | import com.outworkers.phantom.dsl._
+<console>:9: warning: Unused import
+       import com.datastax.driver.core.SocketOptions
+                                       ^
+<console>:11: warning: Unused import
+       import com.outworkers.phantom.connectors._
+                                                ^
+<console>:14: warning: Unused import
+       import com.outworkers.phantom.dsl._
+                                         ^
+<console>:17: warning: Unused import
+       import com.outworkers.phantom.connectors._
+                                                ^
+<console>:20: warning: Unused import
+       import com.outworkers.phantom.dsl._
+                                         ^
+<console>:29: warning: Unused import
+       import com.outworkers.phantom.dsl._
+                                         ^
 import com.outworkers.phantom.dsl._
 
-import db._
-
-db.multiSasiTable.select.where(_.phoneNumber like prefix("example")).fetch()
+scala> SASIDatabase.multiSasiTable.select.where(_.phoneNumber like prefix("example")).queryString
+<console>:29: error: not found: value SASIDatabase
+       SASIDatabase.multiSasiTable.select.where(_.phoneNumber like prefix("example")).queryString
+       ^
+<console>:9: warning: Unused import
+       import com.datastax.driver.core.SocketOptions
+                                       ^
+<console>:11: warning: Unused import
+       import com.outworkers.phantom.connectors._
+                                                ^
+<console>:14: warning: Unused import
+       import com.outworkers.phantom.dsl._
+                                         ^
+<console>:17: warning: Unused import
+       import com.outworkers.phantom.connectors._
+                                                ^
+<console>:20: warning: Unused import
+       import com.outworkers.phantom.dsl._
+                                         ^
+<console>:23: warning: Unused import
+       import com.outworkers.phantom.dsl._
+                                         ^
 ```
   
 #### Mode.Contains

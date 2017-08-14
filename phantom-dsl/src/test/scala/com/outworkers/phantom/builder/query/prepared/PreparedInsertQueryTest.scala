@@ -175,6 +175,45 @@ class PreparedInsertQueryTest extends PhantomSuite {
     }
   }
 
+  it should "execute a prepared TTL bind with a " in {
+    val usedTtl = 10
+
+    val sample = gen[Recipe]
+
+    val query = database.recipes.insert
+      .p_value(_.uid, ?)
+      .p_value(_.url, ?)
+      .p_value(_.servings, ?)
+      .p_value(_.ingredients, ?)
+      .p_value(_.description, ?)
+      .p_value(_.lastcheckedat, ?)
+      .p_value(_.props, ?)
+      .consistencyLevel_=(ConsistencyLevel.ONE)
+      .ttl(?)
+      .prepare()
+
+    val exec = query.bind(
+      sample.uid,
+      sample.url,
+      sample.servings,
+      sample.ingredients,
+      sample.description,
+      sample.lastCheckedAt,
+      sample.props,
+      usedTtl
+    )
+
+    val chain = for {
+      store <- exec.future()
+      res <- database.recipes.select.where(_.url eqs sample.url).one()
+    } yield res
+
+    whenReady(chain) { res =>
+      res shouldBe defined
+      res.value shouldEqual sample
+    }
+  }
+
   it should "be able to bind a derived primitive" in {
     val sample = DerivedRecord(
       gen[UUID],
