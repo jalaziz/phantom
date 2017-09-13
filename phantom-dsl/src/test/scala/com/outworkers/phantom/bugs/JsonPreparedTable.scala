@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.outworkers.phantom.tables.bugs
+package com.outworkers.phantom.bugs
 
 import com.outworkers.phantom.ResultSet
 import com.outworkers.phantom.dsl._
