@@ -18,7 +18,6 @@ package com.outworkers.phantom.finagle
 import com.outworkers.phantom.tables.{JodaRow, TestDatabase}
 import com.outworkers.util.samplers._
 import com.twitter.util.{ Await, Future }
-import org.joda.time.{DateTime, DateTimeZone}
 import org.scalameter.api.{Gen => MeterGen, gen => _, _}
 import com.twitter.conversions.time._
 
