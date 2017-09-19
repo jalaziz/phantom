@@ -29,7 +29,10 @@ private[phantom] object WhiteboxToolbelt {
     val underlying: MutableMap[Any, Any] = MutableMap.empty
 
     def show: String = underlying.mkString("\n")
+
+    def showCache(c: whitebox.Context, flag: Boolean): Unit = if (flag) { c.echo(c.enclosingPosition, show) }
   }
+
   final val ddHelperCache: Cache = new Cache()
   final val bindHelperCache: Cache = new Cache()
   final val tableHelperCache: Cache = new Cache()

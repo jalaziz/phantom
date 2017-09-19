@@ -27,7 +27,6 @@ import shapeless.HList
 
 import scala.collection.immutable.ListMap
 import scala.reflect.macros.whitebox
-import scala.util.control.NonFatal
 
 trait TableHelper[T <: CassandraTable[T, R], R] extends Serializable {
 
@@ -435,18 +434,6 @@ class TableHelperMacro(override val c: whitebox.Context) extends WhiteboxToolbel
       tree
     }
   }
-
-  def checkFromRowDefinition(tableType: Type, recordType: Type): Unit = {
-    val toFind = tq"_root_.scala.Function1[$rowType, $recordType]".tpe
-    Console.println(s"This is the type to look for ${showCode(tq"$toFind")}")
-    val fromRowSym = tableType.decls.find(_.typeSignature == tq"_root_.scala.Function1[$rowType, $recordType]".tpe)
-
-    //Console.println(showCode(q"${fromRowSym.get}"))
-
-    val tree = fromRowSym.asInstanceOf[scala.reflect.internal.Symbols#TermSymbol].unpackLocation
-    //Console.println(tree)
-  }
-
   def macroImpl(tableType: Type, recordType: Type): Tree = {
     val refTable = determineReferenceTable(tableType).map(_.typeSignature).getOrElse(tableType)
     val referenceColumns = refTable.decls.sorted.filter(_.typeSignature <:< typeOf[AbstractColumn[_]])
@@ -460,12 +447,6 @@ class TableHelperMacro(override val c: whitebox.Context) extends WhiteboxToolbel
     val notImplemented = q"???"
     val sasiIndexes = columns.filter(sym => sym.typeSignature <:< sasiIndexTpe) map { index =>
       q"$tableTerm.${index.name.toTermName}"
-    }
-
-    try {
-      checkFromRowDefinition(refTable, recordType)
-    } catch {
-      case NonFatal(e) => Console.println(e.getStackTraceString)
     }
 
     if (fromRowFn.isEmpty && abstractFromRow.isAbstract) {
@@ -524,9 +505,7 @@ class TableHelperMacro(override val c: whitebox.Context) extends WhiteboxToolbel
       echo(showCode(tree))
     }
 
-    if (showCache) {
-      echo(WhiteboxToolbelt.tableHelperCache.show)
-    }
+    WhiteboxToolbelt.tableHelperCache.showCache(c, showCache)
 
     tree
   }
