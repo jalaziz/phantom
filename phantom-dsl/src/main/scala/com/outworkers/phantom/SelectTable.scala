@@ -15,7 +15,6 @@
  */
 package com.outworkers.phantom
 
-import com.outworkers.phantom.builder.QueryBuilder
 import com.outworkers.phantom.builder.clauses.TypedClause
 import com.outworkers.phantom.builder.ops.SelectColumn
 import com.outworkers.phantom.builder.query._

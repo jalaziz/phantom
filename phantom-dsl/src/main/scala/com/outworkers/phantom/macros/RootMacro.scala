@@ -451,4 +451,16 @@ trait RootMacro extends HListHelpers with WhiteboxToolbelt {
     }
   }
 
+
+  /**
+    * Finds the first type in the type hierarchy for which columns exist as direct members.
+    * @param tpe The type of the table.
+    * @return An optional symbol, if such a type was found in the type hierarchy.
+    */
+  def determineReferenceTable(tpe: Type): Option[Symbol] = {
+    tpe.baseClasses.reverse.find(symbol =>
+      symbol.typeSignature.decls.exists(_.typeSignature <:< typeOf[AbstractColumn[_]])
+    )
+  }
+
 }

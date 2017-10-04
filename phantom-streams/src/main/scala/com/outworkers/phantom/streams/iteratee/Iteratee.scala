@@ -37,7 +37,7 @@ object Iteratee {
   def collect[R]()(implicit ec: ExecutionContext): PlayIteratee[R, List[R]] =
     PlayIteratee.fold(List.empty[R])((acc, e: R)=> e :: acc)
 
-  def chunks[R]()(implicit ec: ExecutionContext): PlayIteratee[R, List[R]] = {
+  def chunks[R](): PlayIteratee[R, List[R]] = {
     PlayIteratee.getChunks
   }
 

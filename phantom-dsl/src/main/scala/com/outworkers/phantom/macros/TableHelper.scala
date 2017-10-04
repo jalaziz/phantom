@@ -377,17 +377,6 @@ class TableHelperMacro(override val c: whitebox.Context) extends WhiteboxToolbel
   }
 
   /**
-    * Finds the first type in the type hierarchy for which columns exist as direct members.
-    * @param tpe The type of the table.
-    * @return An optional symbol, if such a type was found in the type hierarchy.
-    */
-  def determineReferenceTable(tpe: Type): Option[Symbol] = {
-    tpe.baseClasses.reverse.find(symbol =>
-      symbol.typeSignature.decls.exists(_.typeSignature <:< typeOf[AbstractColumn[_]])
-    )
-  }
-
-  /**
     * Extracts the name of the table that will be generated and used in Cassandra.
     * This can be changed at runtime by the user by overriding [[CassandraTable.tableName]].
     * This mechanism is incompatible with the historical way we used to do this, effectively using
