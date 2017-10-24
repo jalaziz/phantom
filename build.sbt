@@ -32,7 +32,7 @@ lazy val Versions = new {
   val scalacheck = "1.13.4"
   val slf4j = "1.7.21"
   val reactivestreams = "1.0.0"
-  val cassandraUnit = "3.0.0.1"
+  val cassandraUnit = "3.3.0.2"
   val javaxServlet = "3.0.1"
 
   val joda = "2.9.7"
