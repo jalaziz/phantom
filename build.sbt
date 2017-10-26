@@ -15,6 +15,7 @@
  */
 import sbt.Keys._
 import sbt._
+import com.twitter.sbt._
 
 lazy val ScalacOptions =  Seq(
   "-deprecation", // Emit warning and location for usages of deprecated APIs.
