@@ -86,7 +86,11 @@ case class InsertQuery[
 
   def values[RR](insertions: (CQLQuery, CQLQuery)*): InsertQuery[Table, Record, Status, PS] = {
     val (appendedCols, appendedVals) = (insertions :\ columnsPart -> valuePart) {
-      case ((columnRef, valueRef), (cols, vals)) => Tuple2(cols append columnRef, vals append valueRef)
+      case ((columnRef, valueRef), cvs@(cols, vals)) =>
+        Option(valueRef.toString) match {
+          case Some(_) => Tuple2(cols append columnRef, vals append valueRef)
+          case None    => cvs
+        }
     }
 
     copy(columnsPart = appendedCols, valuePart = appendedVals)
@@ -96,10 +100,15 @@ case class InsertQuery[
     col: Table => AbstractColumn[RR],
     value: RR
   )(): InsertQuery[Table, Record, Status, PS] = {
-    copy(
-      columnsPart = columnsPart append CQLQuery(col(table).name),
-      valuePart = valuePart append CQLQuery(col(table).asCql(value))
-    )
+    val cql = col(table).asCql(value)
+    if (Option(cql).isDefined) {
+      copy(
+        columnsPart = columnsPart append CQLQuery(col(table).name),
+        valuePart = valuePart append CQLQuery(cql)
+      )
+    } else {
+      this
+    }
   }
 
   final def p_value[RR](
