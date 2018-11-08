@@ -39,6 +39,7 @@ class RecipesDatabase(override val connector: CassandraConnection) extends Datab
   object CompositeKeyRecipes extends CompositeKeyRecipes with Connector
   object ThriftTable extends ThriftTable with connector.Connector
   object SecondaryKeyRecipes extends SecondaryKeyRecipes with Connector
+  object PrimitiveColumnRecipes extends PrimitiveColumnRecipes with Connector
 
   /**
    * Right now you can go for a really neat trick of the trade.
